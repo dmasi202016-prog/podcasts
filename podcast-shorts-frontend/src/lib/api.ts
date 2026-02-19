@@ -24,6 +24,7 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 export async function startPipeline(
   userId: string,
   categories: string[],
+  resolution: string = "720x1280",
 ): Promise<PipelineStartResponse> {
   return fetchJSON<PipelineStartResponse>(`${API_BASE}/start`, {
     method: "POST",
@@ -31,6 +32,7 @@ export async function startPipeline(
       user_id: userId,
       keywords: [],
       user_preferences: { interest_categories: categories },
+      resolution,
     }),
   });
 }

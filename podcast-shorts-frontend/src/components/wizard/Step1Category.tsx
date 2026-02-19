@@ -24,9 +24,15 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   GraduationCap: <GraduationCap size={28} />,
 };
 
+const RESOLUTIONS = [
+  { value: "720x1280", label: "HD (720x1280)", desc: "빠른 생성, 낮은 메모리" },
+  { value: "1080x1920", label: "Full HD (1080x1920)", desc: "고화질, 더 많은 메모리 필요" },
+];
+
 export function Step1Category() {
   const { state, startPipeline } = usePipeline();
   const [selected, setSelected] = useState<string[]>([]);
+  const [resolution, setResolution] = useState("720x1280");
   const [starting, setStarting] = useState(false);
 
   const toggle = (id: string) => {
@@ -38,7 +44,7 @@ export function Step1Category() {
   const handleStart = async () => {
     if (selected.length === 0) return;
     setStarting(true);
-    await startPipeline(selected);
+    await startPipeline(selected, resolution);
   };
 
   if (starting && state.isLoading) {
@@ -74,6 +80,26 @@ export function Step1Category() {
             <span className="text-sm font-medium">{cat.label}</span>
           </Card>
         ))}
+      </div>
+
+      <div className="mb-6">
+        <h3 className="text-sm font-medium text-zinc-300 mb-3">영상 해상도</h3>
+        <div className="flex gap-3">
+          {RESOLUTIONS.map((r) => (
+            <button
+              key={r.value}
+              onClick={() => setResolution(r.value)}
+              className={`flex-1 rounded-lg border px-4 py-3 text-left transition-colors ${
+                resolution === r.value
+                  ? "border-violet-500 bg-violet-500/10 text-white"
+                  : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-500"
+              }`}
+            >
+              <div className="text-sm font-medium">{r.label}</div>
+              <div className="text-xs mt-1 opacity-70">{r.desc}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex justify-center">

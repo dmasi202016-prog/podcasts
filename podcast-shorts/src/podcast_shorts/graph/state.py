@@ -135,5 +135,8 @@ class PipelineState(TypedDict):
     hook_video_prompt: Optional[str]
     hook_prompt_approved: Optional[bool]
 
+    # Video resolution ("1080x1920" | "720x1280")
+    video_resolution: Optional[str]
+
     # Error tracking
     error: Optional[str]

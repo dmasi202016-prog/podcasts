@@ -219,8 +219,11 @@ async def auto_editor(state: PipelineState) -> dict:
                 hook_video_path = None
 
         # ── Step 4: Build per-scene VideoClips ───────────────────────
-        width = settings.video_width
-        height = settings.video_height
+        resolution = state.get("video_resolution", "720x1280")
+        try:
+            width, height = (int(x) for x in resolution.split("x"))
+        except (ValueError, AttributeError):
+            width, height = 720, 1280
         clips = []
         cursor = 0.0
 

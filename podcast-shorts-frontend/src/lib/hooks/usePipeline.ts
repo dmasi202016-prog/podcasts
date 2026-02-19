@@ -9,10 +9,10 @@ export function usePipeline() {
   const { state, dispatch } = usePipelineContext();
   const { startPolling, extendPolling } = usePolling();
 
-  const startPipeline = useCallback(async (categories: string[]) => {
+  const startPipeline = useCallback(async (categories: string[], resolution: string = "720x1280") => {
     try {
       dispatch({ type: "SET_CATEGORIES", categories });
-      const res = await api.startPipeline("default_user", categories);
+      const res = await api.startPipeline("default_user", categories, resolution);
       dispatch({ type: "START_PIPELINE", runId: res.run_id });
       startPolling(res.run_id);
     } catch (err) {

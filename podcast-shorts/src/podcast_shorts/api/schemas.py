@@ -16,6 +16,10 @@ class PipelineStartRequest(BaseModel):
     user_preferences: dict[str, Any] = Field(
         default_factory=dict, description="User interest categories, persona settings"
     )
+    resolution: str = Field(
+        default="720x1280",
+        description="Video resolution: '1080x1920' (Full HD) or '720x1280' (HD, lower memory)",
+    )
 
 
 class PipelineStartResponse(BaseModel):
