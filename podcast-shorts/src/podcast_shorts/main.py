@@ -1,5 +1,6 @@
 """FastAPI application entrypoint."""
 
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -23,40 +24,10 @@ _OUTPUT_DIR = _PROJECT_ROOT / "output"
 _ASSETS_DIR = _PROJECT_ROOT / "assets"
 
 
-class FixCorsOriginMiddleware(BaseHTTPMiddleware):
-    """Ensure Access-Control-Allow-Origin is set for cross-origin requests."""
+# ---------------------------------------------------------------------------
+# CORS configuration
+# ---------------------------------------------------------------------------
 
-    def __init__(self, app: ASGIApp, allowed_origins: set[str]):
-        super().__init__(app)
-        self.allowed_origins = allowed_origins
-
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        origin = request.headers.get("origin")
-        if origin and origin in self.allowed_origins:
-            response.headers["access-control-allow-origin"] = origin
-            response.headers["access-control-allow-credentials"] = "true"
-        return response
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Manage application lifecycle — initialize and cleanup resources."""
-    logger.info("app.startup")
-    checkpointer = get_checkpointer()
-    async with checkpointer:
-        yield
-    logger.info("app.shutdown")
-
-
-app = FastAPI(
-    title="Podcast Shorts Generator",
-    description="AI-powered podcast shorts generation platform",
-    version="0.1.0",
-    lifespan=lifespan,
-)
-
-# CORS for Next.js frontend
 _DEFAULT_ORIGINS = {
     "http://localhost:3000",
     "http://localhost:3001",
@@ -72,16 +43,95 @@ def _get_allowed_origins() -> set[str]:
     return origins
 
 
+def _build_origin_regex(origins: set[str]) -> str | None:
+    """Build a regex that matches configured origins AND their subdomains.
+
+    For example, "https://my-app.vercel.app" generates a pattern that also
+    matches Vercel preview URLs like "https://my-app-git-xxx.vercel.app".
+    """
+    patterns: list[str] = []
+    for origin in origins:
+        if "vercel.app" in origin:
+            # Match any *.vercel.app URL (production + preview deployments)
+            patterns.append(r"https://[a-zA-Z0-9\-]+\.vercel\.app")
+        elif "railway.app" in origin:
+            # Match any *.railway.app URL
+            patterns.append(r"https://[a-zA-Z0-9\-]+\.up\.railway\.app")
+    if not patterns:
+        return None
+    # Deduplicate and combine
+    unique = list(set(patterns))
+    return "^(" + "|".join(unique) + ")$"
+
+
 _ALLOWED_ORIGINS = _get_allowed_origins()
+_ORIGIN_REGEX = _build_origin_regex(_ALLOWED_ORIGINS)
+
+
+class FixCorsOriginMiddleware(BaseHTTPMiddleware):
+    """Ensure Access-Control-Allow-Origin is set for cross-origin requests.
+
+    Handles both exact-match origins and regex-matched origins (e.g. Vercel previews).
+    """
+
+    def __init__(self, app: ASGIApp, allowed_origins: set[str], origin_regex: str | None = None):
+        super().__init__(app)
+        self.allowed_origins = allowed_origins
+        self.origin_pattern = re.compile(origin_regex) if origin_regex else None
+
+    def _is_allowed(self, origin: str) -> bool:
+        if origin in self.allowed_origins:
+            return True
+        if self.origin_pattern and self.origin_pattern.match(origin):
+            return True
+        return False
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        origin = request.headers.get("origin")
+        if origin and self._is_allowed(origin):
+            response.headers["access-control-allow-origin"] = origin
+            response.headers["access-control-allow-credentials"] = "true"
+        return response
+
+
+# ---------------------------------------------------------------------------
+# App lifecycle
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle — initialize and cleanup resources."""
+    logger.info(
+        "app.startup",
+        allowed_origins=sorted(_ALLOWED_ORIGINS),
+        origin_regex=_ORIGIN_REGEX,
+    )
+    checkpointer = get_checkpointer()
+    async with checkpointer:
+        yield
+    logger.info("app.shutdown")
+
+
+app = FastAPI(
+    title="Podcast Shorts Generator",
+    description="AI-powered podcast shorts generation platform",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# CORS middleware — allow_origin_regex covers Vercel preview URLs automatically
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(_ALLOWED_ORIGINS),
+    allow_origin_regex=_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# Ensure Access-Control-Allow-Origin is always set (fixes some CORS edge cases)
-app.add_middleware(FixCorsOriginMiddleware, allowed_origins=_ALLOWED_ORIGINS)
+# Ensure Access-Control-Allow-Origin header is always set (fixes some CORS edge cases)
+app.add_middleware(FixCorsOriginMiddleware, allowed_origins=_ALLOWED_ORIGINS, origin_regex=_ORIGIN_REGEX)
 
 app.include_router(router)
 
