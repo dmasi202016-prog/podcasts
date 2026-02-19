@@ -116,11 +116,11 @@ async def lifespan(app: FastAPI):
         from psycopg import AsyncConnection
 
         # Supabase uses PgBouncer (transaction mode) which doesn't support
-        # prepared statements. prepare_threshold=0 disables them.
+        # prepared statements. prepare_threshold=None fully disables them.
         conn = await AsyncConnection.connect(
             settings.database_url,
             autocommit=True,
-            prepare_threshold=0,
+            prepare_threshold=None,
         )
         try:
             saver = AsyncPostgresSaver(conn)
