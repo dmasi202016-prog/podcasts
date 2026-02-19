@@ -443,13 +443,26 @@ async def upload_full_audio(run_id: str, request: Request):
     content = await audio_upload.read()
     full_audio_path.write_bytes(content)
 
-    # Split full audio into per-scene segments proportional to script durations
-    from moviepy import AudioFileClip as _AFC
+    # Get full audio duration via ffprobe (async subprocess — won't block event loop)
+    import asyncio as _asyncio
 
-    clip = _AFC(str(full_audio_path))
-    full_duration = clip.duration
+    probe = await _asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(full_audio_path),
+        stdout=_asyncio.subprocess.PIPE,
+        stderr=_asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await probe.communicate()
+    try:
+        full_duration = float(stdout.strip())
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Could not read audio duration — check the file format")
+
     total_script_duration = sum(s.get("duration", 5.0) for s in scenes) or full_duration
 
+    # Split into per-scene segments using ffmpeg directly
     audio_files: dict[str, str] = {}
     cursor = 0.0
     for scene in scenes:
@@ -457,13 +470,25 @@ async def upload_full_audio(run_id: str, request: Request):
         ratio = scene.get("duration", 5.0) / total_script_duration
         seg_duration = ratio * full_duration
         end = min(cursor + seg_duration, full_duration)
-        seg = clip.subclipped(cursor, end)
         out_path = str(base / f"{scene_id}.mp3")
-        seg.write_audiofile(out_path, logger=None)
-        seg.close()
+
+        proc = await _asyncio.create_subprocess_exec(
+            "ffmpeg", "-y",
+            "-i", str(full_audio_path),
+            "-ss", str(cursor),
+            "-to", str(end),
+            "-acodec", "libmp3lame", "-q:a", "2",
+            out_path,
+            stdout=_asyncio.subprocess.PIPE,
+            stderr=_asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            logger.error("upload_full_audio.ffmpeg_error", scene_id=scene_id, err=stderr.decode()[-500:])
+            raise HTTPException(status_code=500, detail=f"ffmpeg failed for scene {scene_id}")
+
         audio_files[scene_id] = out_path
         cursor = end
-    clip.close()
 
     logger.info("upload_full_audio.done", run_id=run_id, scenes=len(audio_files))
     return {"run_id": run_id, "audio_files": audio_files}
