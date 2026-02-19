@@ -43,7 +43,9 @@
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
       "Bash(kill:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

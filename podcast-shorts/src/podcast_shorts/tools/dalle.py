@@ -39,9 +39,12 @@ async def dalle_generate(
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
 
+    # Force portrait/vertical orientation regardless of prompt content
+    portrait_prompt = f"Portrait orientation, vertical 9:16 format, do not generate landscape. {prompt}"
+
     response = await client.images.generate(
         model="dall-e-3",
-        prompt=prompt,
+        prompt=portrait_prompt,
         size=size,
         quality="hd",
         style="vivid",
