@@ -124,7 +124,15 @@ async def lifespan(app: FastAPI):
         )
         try:
             saver = AsyncPostgresSaver(conn)
-            await saver.setup()
+            try:
+                await saver.setup()
+            except Exception as setup_err:
+                # PgBouncer (transaction mode) may reject prepared statements
+                # during setup. Tables likely already exist from a prior run.
+                logger.warning(
+                    "app.checkpointer.setup_skipped",
+                    error=str(setup_err),
+                )
             set_checkpointer(saver)
             logger.info("app.checkpointer", backend="postgres")
             yield
