@@ -18,10 +18,18 @@ def get_checkpointer() -> BaseCheckpointSaver:
     Uses AsyncPostgresSaver when checkpoint_backend="postgres" and database_url is set,
     otherwise falls back to InMemorySaver.
     """
-    if settings.checkpoint_backend == "postgres" and settings.database_url:
+    if settings.checkpoint_backend == "postgres" and settings.database_url.startswith(
+        "postgres"
+    ):
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-        return AsyncPostgresSaver.from_conn_string(settings.database_url)
+        # Append prepare_threshold=0 for Supabase PgBouncer compatibility
+        conn_string = settings.database_url
+        separator = "&" if "?" in conn_string else "?"
+        if "prepare_threshold" not in conn_string:
+            conn_string = f"{conn_string}{separator}prepare_threshold=0"
+
+        return AsyncPostgresSaver.from_conn_string(conn_string)
     return InMemorySaver()
 
 

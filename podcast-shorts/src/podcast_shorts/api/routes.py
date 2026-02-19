@@ -44,6 +44,16 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api/v1/pipeline")
 
 
+async def _set_error_state(run_id: str, error_msg: str) -> None:
+    """Write error to pipeline state so the frontend can detect it."""
+    graph = get_compiled_graph()
+    config = {"configurable": {"thread_id": run_id}}
+    try:
+        await graph.aupdate_state(config, {"error": error_msg})
+    except Exception:
+        logger.exception("pipeline.set_error_state.failed", run_id=run_id)
+
+
 async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_preferences: dict):
     """Execute the pipeline graph in the background."""
     graph = get_compiled_graph()
@@ -77,8 +87,9 @@ async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_pre
 
     try:
         await graph.ainvoke(initial_state, config=config)
-    except Exception:
+    except Exception as exc:
         logger.exception("pipeline.failed", run_id=run_id)
+        await _set_error_state(run_id, f"파이프라인 실행 실패: {exc}")
 
 
 @router.post("/start", response_model=PipelineStartResponse)
@@ -114,7 +125,9 @@ async def get_pipeline_status(run_id: str):
     try:
         state = await graph.aget_state(config)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
+        # Transient DB error — return running so frontend keeps polling
+        logger.warning("pipeline.status.db_error", run_id=run_id, exc_info=True)
+        return PipelineStatusResponse(run_id=run_id, status="running")
 
     if state.values is None:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
@@ -212,8 +225,9 @@ async def submit_topic_selection(
     async def _resume():
         try:
             await graph.ainvoke(Command(resume=resume_value), config=config)
-        except Exception:
+        except Exception as exc:
             logger.exception("pipeline.topic_selection_resume_failed", run_id=run_id)
+            await _set_error_state(run_id, f"주제 선택 후 처리 실패: {exc}")
 
     background_tasks.add_task(_resume)
 
@@ -271,8 +285,9 @@ async def submit_speaker_selection(
     async def _resume():
         try:
             await graph.ainvoke(Command(resume=resume_value), config=config)
-        except Exception:
+        except Exception as exc:
             logger.exception("pipeline.speaker_selection_resume_failed", run_id=run_id)
+            await _set_error_state(run_id, f"출연자 선택 후 처리 실패: {exc}")
 
     background_tasks.add_task(_resume)
 
@@ -330,8 +345,9 @@ async def submit_review(run_id: str, request: ReviewSubmitRequest, background_ta
     async def _resume():
         try:
             await graph.ainvoke(Command(resume=resume_value), config=config)
-        except Exception:
+        except Exception as exc:
             logger.exception("pipeline.resume_failed", run_id=run_id)
+            await _set_error_state(run_id, f"리뷰 처리 실패: {exc}")
 
     background_tasks.add_task(_resume)
 
@@ -410,8 +426,9 @@ async def submit_audio_choice(run_id: str, request: AudioChoiceRequest, backgrou
     async def _resume():
         try:
             await graph.ainvoke(Command(resume=resume_value), config=config)
-        except Exception:
+        except Exception as exc:
             logger.exception("pipeline.audio_choice_resume_failed", run_id=run_id)
+            await _set_error_state(run_id, f"오디오 선택 처리 실패: {exc}")
 
     background_tasks.add_task(_resume)
 
@@ -460,8 +477,9 @@ async def submit_hook_prompt(
     async def _resume():
         try:
             await graph.ainvoke(Command(resume=resume_value), config=config)
-        except Exception:
+        except Exception as exc:
             logger.exception("pipeline.hook_prompt_resume_failed", run_id=run_id)
+            await _set_error_state(run_id, f"Hook 프롬프트 처리 실패: {exc}")
 
     background_tasks.add_task(_resume)
 

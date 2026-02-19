@@ -23,6 +23,8 @@ export function usePolling() {
   const runIdRef = useRef<string | null>(null);
   const skipStatusRef = useRef<PipelineStatus | null>(null);
   const lastNodeRef = useRef<string | null>(null);
+  const consecutiveErrorsRef = useRef(0);
+  const MAX_CONSECUTIVE_ERRORS = 3;
 
   // Keep ref in sync with context state
   useEffect(() => {
@@ -66,6 +68,9 @@ export function usePolling() {
 
     try {
       const statusRes = await api.getStatus(runId);
+
+      // Reset consecutive error count on success
+      consecutiveErrorsRef.current = 0;
 
       // Track current node for timeout message
       if (statusRes.current_node) {
@@ -125,9 +130,14 @@ export function usePolling() {
         dispatch({ type: "SET_ERROR", error: statusRes.error ?? "파이프라인 실행 실패" });
       }
     } catch (err) {
-      console.error("Polling error:", err);
-      stopPolling();
-      dispatch({ type: "SET_ERROR", error: (err as Error).message });
+      consecutiveErrorsRef.current += 1;
+      console.error(`Polling error (${consecutiveErrorsRef.current}/${MAX_CONSECUTIVE_ERRORS}):`, err);
+
+      // Only show error after multiple consecutive failures (tolerate transient network issues)
+      if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
+        stopPolling();
+        dispatch({ type: "SET_ERROR", error: (err as Error).message });
+      }
     }
   }, [dispatch, stopPolling]);
 

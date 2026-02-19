@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -19,12 +20,8 @@ def _get_supabase_client():
     return create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 
-def _upload_file(client, run_id: str, local_path: str) -> str:
-    """Upload a single file to Supabase Storage and return its public URL.
-
-    Storage path: {run_id}/{filename}
-    Public URL: {supabase_url}/storage/v1/object/public/{bucket}/{run_id}/{filename}
-    """
+def _upload_file_sync(client, run_id: str, local_path: str) -> str:
+    """Upload a single file to Supabase Storage (sync, runs in thread pool)."""
     path = Path(local_path)
     if not path.exists():
         logger.warning("supabase.upload.file_not_found", path=local_path)
@@ -48,7 +45,7 @@ def _upload_file(client, run_id: str, local_path: str) -> str:
 async def upload_pipeline_outputs(run_id: str, editor_output: dict) -> dict[str, str]:
     """Upload final_video, caption_srt, and thumbnail to Supabase Storage.
 
-    Returns dict with public URLs: {"final_video_url": ..., "caption_srt_url": ..., "thumbnail_url": ...}
+    Runs sync Supabase SDK calls in a thread pool to avoid blocking the event loop.
     """
     client = _get_supabase_client()
     urls: dict[str, str] = {}
@@ -60,15 +57,17 @@ async def upload_pipeline_outputs(run_id: str, editor_output: dict) -> dict[str,
     ]:
         local_path = editor_output.get(key, "")
         if local_path:
-            urls[url_key] = _upload_file(client, run_id, local_path)
+            urls[url_key] = await asyncio.to_thread(
+                _upload_file_sync, client, run_id, local_path
+            )
         else:
             urls[url_key] = ""
 
     return urls
 
 
-async def create_pipeline_run(run_id: str, user_id: str) -> None:
-    """Insert a new pipeline_runs row with status='started'."""
+def _create_pipeline_run_sync(run_id: str, user_id: str) -> None:
+    """Insert a new pipeline_runs row (sync, runs in thread pool)."""
     client = _get_supabase_client()
     client.table("pipeline_runs").insert({
         "run_id": run_id,
@@ -78,14 +77,19 @@ async def create_pipeline_run(run_id: str, user_id: str) -> None:
     logger.info("supabase.pipeline_run.created", run_id=run_id)
 
 
-async def save_pipeline_result(
+async def create_pipeline_run(run_id: str, user_id: str) -> None:
+    """Insert a new pipeline_runs row with status='started'."""
+    await asyncio.to_thread(_create_pipeline_run_sync, run_id, user_id)
+
+
+def _save_pipeline_result_sync(
     run_id: str,
     user_id: str,
     urls: dict[str, str],
     metadata: dict[str, Any],
     duration_sec: float,
 ) -> None:
-    """Upsert pipeline_runs row with completed status, URLs, and metadata."""
+    """Upsert pipeline_runs row (sync, runs in thread pool)."""
     client = _get_supabase_client()
     client.table("pipeline_runs").upsert(
         {
@@ -107,19 +111,37 @@ async def save_pipeline_result(
     logger.info("supabase.pipeline_result.saved", run_id=run_id)
 
 
-async def get_pipeline_result_from_db(run_id: str) -> EditorOutputModel | None:
-    """Fetch a completed pipeline result from DB (fallback when checkpointer state is lost)."""
+async def save_pipeline_result(
+    run_id: str,
+    user_id: str,
+    urls: dict[str, str],
+    metadata: dict[str, Any],
+    duration_sec: float,
+) -> None:
+    """Upsert pipeline_runs row with completed status, URLs, and metadata."""
+    await asyncio.to_thread(
+        _save_pipeline_result_sync, run_id, user_id, urls, metadata, duration_sec
+    )
+
+
+def _get_pipeline_result_sync(run_id: str) -> dict | None:
+    """Fetch a completed pipeline result from DB (sync, runs in thread pool)."""
     client = _get_supabase_client()
     response = (
         client.table("pipeline_runs")
         .select("*")
         .eq("run_id", run_id)
         .eq("status", "completed")
-        .single()
+        .maybe_single()
         .execute()
     )
+    return response.data
 
-    row = response.data
+
+async def get_pipeline_result_from_db(run_id: str) -> EditorOutputModel | None:
+    """Fetch a completed pipeline result from DB (fallback when checkpointer state is lost)."""
+    row = await asyncio.to_thread(_get_pipeline_result_sync, run_id)
+
     if not row:
         return None
 
