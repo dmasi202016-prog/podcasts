@@ -460,14 +460,17 @@ async def upload_full_audio(run_id: str, request: Request):
     except ValueError:
         raise HTTPException(status_code=422, detail="Could not read audio duration — check the file format")
 
-    total_script_duration = sum(s.get("duration", 5.0) for s in scenes) or full_duration
+    # Split by text character count ratio — more accurate than script duration estimates
+    # because character count is proportional to actual speaking time.
+    total_chars = sum(len(s.get("text", "")) for s in scenes) or 1
 
-    # Split into per-scene segments using ffmpeg directly
+    # Split into per-scene segments using ffmpeg, applying 1.25x speed (same as TTS)
     audio_files: dict[str, str] = {}
     cursor = 0.0
     for scene in scenes:
         scene_id = scene["scene_id"]
-        ratio = scene.get("duration", 5.0) / total_script_duration
+        chars = len(scene.get("text", ""))
+        ratio = chars / total_chars
         seg_duration = ratio * full_duration
         end = min(cursor + seg_duration, full_duration)
         out_path = str(base / f"{scene_id}.mp3")
@@ -477,6 +480,7 @@ async def upload_full_audio(run_id: str, request: Request):
             "-i", str(full_audio_path),
             "-ss", str(cursor),
             "-to", str(end),
+            "-af", "atempo=1.25",          # 1.25x speed, same as TTS
             "-acodec", "libmp3lame", "-q:a", "2",
             out_path,
             stdout=_asyncio.subprocess.PIPE,
