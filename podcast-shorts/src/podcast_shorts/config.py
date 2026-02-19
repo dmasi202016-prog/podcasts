@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./podcast_shorts.db"
 
+    # Supabase
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    supabase_storage_bucket: str = "pipeline-outputs"
+
+    # CORS — comma-separated extra origins, e.g. "https://xxx.vercel.app"
+    allowed_origins: str = ""
+
+    # Checkpointer backend: "memory" | "postgres"
+    checkpoint_backend: str = "memory"
+
     # Output
     output_base_dir: str = "./output"
 

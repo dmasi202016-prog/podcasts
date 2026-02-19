@@ -13,6 +13,7 @@ from starlette.types import ASGIApp
 
 from podcast_shorts.api.dependencies import get_checkpointer
 from podcast_shorts.api.routes import router
+from podcast_shorts.config import settings
 
 logger = structlog.get_logger()
 
@@ -56,12 +57,22 @@ app = FastAPI(
 )
 
 # CORS for Next.js frontend
-_ALLOWED_ORIGINS = {
+_DEFAULT_ORIGINS = {
     "http://localhost:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3001",
 }
+
+
+def _get_allowed_origins() -> set[str]:
+    origins = set(_DEFAULT_ORIGINS)
+    if settings.allowed_origins:
+        origins.update(o.strip() for o in settings.allowed_origins.split(",") if o.strip())
+    return origins
+
+
+_ALLOWED_ORIGINS = _get_allowed_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(_ALLOWED_ORIGINS),

@@ -62,11 +62,11 @@ def route_after_media(
     return END
 
 
-def route_after_editor(state: PipelineState) -> Literal["auto_editor", "__end__"]:
-    """Route after auto_editor: retry or finish."""
+def route_after_editor(state: PipelineState) -> Literal["auto_editor", "upload_results"]:
+    """Route after auto_editor: retry or proceed to upload."""
     quality = state.get("quality")
     if quality is None or quality["passed"]:
-        return END
+        return "upload_results"
     if _should_retry(state, "auto_editor"):
         return "auto_editor"
-    return END
+    return "upload_results"

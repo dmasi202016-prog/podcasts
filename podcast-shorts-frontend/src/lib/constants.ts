@@ -1,7 +1,11 @@
 import type { FamilyMember } from "./types";
 
-export const API_BASE = "http://localhost:8000/api/v1/pipeline";
-export const FILES_BASE = "http://localhost:8000/files";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1/pipeline`
+  : "http://localhost:8000/api/v1/pipeline";
+
+export const FILES_BASE = process.env.NEXT_PUBLIC_FILES_URL
+  || "http://localhost:8000/files";
 
 export const CATEGORIES = [
   { id: "기술", label: "기술", icon: "Monitor" },

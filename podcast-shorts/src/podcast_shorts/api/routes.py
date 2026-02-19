@@ -34,6 +34,10 @@ from podcast_shorts.api.schemas import (
 from podcast_shorts.nodes.speaker_selection import FAMILY_MEMBERS
 from podcast_shorts.models.output import EditorOutputModel
 from podcast_shorts.models.script import ScriptDataModel
+from podcast_shorts.tools.supabase_storage import (
+    create_pipeline_run,
+    get_pipeline_result_from_db,
+)
 
 logger = structlog.get_logger()
 
@@ -81,6 +85,13 @@ async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_pre
 async def start_pipeline(request: PipelineStartRequest, background_tasks: BackgroundTasks):
     """Start a new pipeline run in the background."""
     run_id = str(uuid.uuid4())
+
+    # Record pipeline start in Supabase DB (if configured)
+    if settings.supabase_url:
+        try:
+            await create_pipeline_run(run_id, request.user_id)
+        except Exception:
+            logger.exception("pipeline.db_create_failed", run_id=run_id)
 
     background_tasks.add_task(
         _run_pipeline,
@@ -460,31 +471,48 @@ async def submit_hook_prompt(
 
 @router.get("/{run_id}/result", response_model=PipelineResultResponse)
 async def get_pipeline_result(run_id: str):
-    """Get the final result of a completed pipeline run."""
+    """Get the final result of a completed pipeline run.
+
+    Tries LangGraph checkpointer state first, falls back to Supabase DB
+    (useful after server restart when in-memory state is lost).
+    """
     graph = get_compiled_graph()
     config = {"configurable": {"thread_id": run_id}}
 
     try:
         state = await graph.aget_state(config)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
+        state = None
 
-    if state.values is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
+    # Try checkpointer state first
+    if state and state.values:
+        error = state.values.get("error")
+        if error:
+            return PipelineResultResponse(run_id=run_id, status="failed", error=error)
 
-    error = state.values.get("error")
-    if error:
-        return PipelineResultResponse(run_id=run_id, status="failed", error=error)
+        editor_output = state.values.get("editor_output")
+        if editor_output is not None:
+            return PipelineResultResponse(
+                run_id=run_id,
+                status="completed",
+                result=EditorOutputModel(**editor_output),
+            )
 
-    editor_output = state.values.get("editor_output")
-    if editor_output is None:
+    # Fallback: query Supabase DB for persisted results
+    if settings.supabase_url:
+        try:
+            db_result = await get_pipeline_result_from_db(run_id)
+            if db_result is not None:
+                return PipelineResultResponse(
+                    run_id=run_id, status="completed", result=db_result
+                )
+        except Exception:
+            logger.exception("pipeline.db_fallback_failed", run_id=run_id)
+
+    if state and state.values:
         return PipelineResultResponse(run_id=run_id, status="not_completed")
 
-    return PipelineResultResponse(
-        run_id=run_id,
-        status="completed",
-        result=EditorOutputModel(**editor_output),
-    )
+    raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
 
 @router.get("/{run_id}/stream")

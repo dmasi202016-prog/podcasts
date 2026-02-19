@@ -86,3 +86,19 @@ Output: 최종 쇼츠 영상 파일 및 플랫폼별 메타데이터(제목, 태
 확장성: 향후 Instagram, TikTok 외에 네이버 클립 등 추가 플랫폼 확장 고려.
 
 속도: 전체 제작 공정(검색~렌더링)이 10분 이내에 완료될
+
+
+
+
+백엔드 재시작:                                                                                          
+                                                                                                          
+  # 기존 프로세스 종료                                                                                    
+  kill $(lsof -ti:8000) 2>/dev/null                                                                       
+                                                                                                          
+  # 재시작                                                                                                
+  cd /Applications/workspace/Podcast/podcast-shorts && uv run uvicorn podcast_shorts.main:app --host 0.0.0.0 --port 8000 --reload
+
+
+❯ 프론트엔드 실행은 어디서 어떻게 하지?                                                                   
+                                                                                                          
+cd /Applications/workspace/Podcast/podcast-shorts-frontend && npm run dev                               

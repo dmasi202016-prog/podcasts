@@ -22,6 +22,7 @@ from podcast_shorts.nodes.scriptwriter import scriptwriter
 from podcast_shorts.nodes.speaker_selection import speaker_selection_gate
 from podcast_shorts.nodes.topic_selection import topic_selection_gate
 from podcast_shorts.nodes.trend_researcher import trend_researcher
+from podcast_shorts.nodes.upload_results import upload_results
 
 
 def build_graph(checkpointer: BaseCheckpointSaver | None = None):
@@ -45,6 +46,7 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None):
     graph.add_node("media_producer", media_producer)
     graph.add_node("hook_prompt_gate", hook_prompt_gate)
     graph.add_node("auto_editor", auto_editor)
+    graph.add_node("upload_results", upload_results)
 
     # Entry point
     graph.set_entry_point("trend_researcher")
@@ -104,8 +106,11 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None):
         route_after_editor,
         {
             "auto_editor": "auto_editor",
-            END: END,
+            "upload_results": "upload_results",
         },
     )
+
+    # upload_results always terminates the pipeline
+    graph.add_edge("upload_results", END)
 
     return graph.compile(checkpointer=checkpointer)
