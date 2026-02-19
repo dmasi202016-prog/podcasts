@@ -2,33 +2,44 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
-
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 
 from podcast_shorts.config import settings
 from podcast_shorts.graph.builder import build_graph
 
+# Module-level singletons — set during app lifespan
+_checkpointer: BaseCheckpointSaver | None = None
+_compiled_graph = None
 
-@lru_cache(maxsize=1)
+
+def set_checkpointer(saver: BaseCheckpointSaver) -> None:
+    """Store the checkpointer singleton (called from lifespan)."""
+    global _checkpointer, _compiled_graph
+    _checkpointer = saver
+    # Invalidate cached graph so it rebuilds with the new checkpointer
+    _compiled_graph = None
+
+
 def get_checkpointer() -> BaseCheckpointSaver:
-    """Return a singleton checkpointer.
-
-    Uses AsyncPostgresSaver when checkpoint_backend="postgres" and database_url is set,
-    otherwise falls back to InMemorySaver.
-    """
-    if settings.checkpoint_backend == "postgres" and settings.database_url.startswith(
-        "postgres"
-    ):
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-        return AsyncPostgresSaver.from_conn_string(settings.database_url)
-    return InMemorySaver()
+    """Return the active checkpointer."""
+    if _checkpointer is None:
+        raise RuntimeError("Checkpointer not initialized — app lifespan not started?")
+    return _checkpointer
 
 
-@lru_cache(maxsize=1)
 def get_compiled_graph():
     """Return the compiled pipeline graph with checkpointer."""
-    checkpointer = get_checkpointer()
-    return build_graph(checkpointer=checkpointer)
+    global _compiled_graph
+    if _compiled_graph is None:
+        _compiled_graph = build_graph(checkpointer=get_checkpointer())
+    return _compiled_graph
+
+
+def is_postgres_backend() -> bool:
+    """Check if we should use PostgresSaver."""
+    return (
+        settings.checkpoint_backend == "postgres"
+        and bool(settings.database_url)
+        and settings.database_url.startswith("postgres")
+    )

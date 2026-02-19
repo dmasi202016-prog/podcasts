@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.types import ASGIApp
 
-from podcast_shorts.api.dependencies import get_checkpointer
+from podcast_shorts.api.dependencies import is_postgres_backend, set_checkpointer
 from podcast_shorts.api.routes import router
 from podcast_shorts.config import settings
 
@@ -108,9 +108,23 @@ async def lifespan(app: FastAPI):
         allowed_origins=sorted(_ALLOWED_ORIGINS),
         origin_regex=_ORIGIN_REGEX,
     )
-    checkpointer = get_checkpointer()
-    async with checkpointer:
+
+    if is_postgres_backend():
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+        async with AsyncPostgresSaver.from_conn_string(settings.database_url) as saver:
+            await saver.setup()
+            set_checkpointer(saver)
+            logger.info("app.checkpointer", backend="postgres")
+            yield
+    else:
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        saver = InMemorySaver()
+        set_checkpointer(saver)
+        logger.info("app.checkpointer", backend="memory")
         yield
+
     logger.info("app.shutdown")
 
 
