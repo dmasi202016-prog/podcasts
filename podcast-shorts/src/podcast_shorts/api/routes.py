@@ -54,8 +54,17 @@ async def _set_error_state(run_id: str, error_msg: str) -> None:
         logger.exception("pipeline.set_error_state.failed", run_id=run_id)
 
 
+# In-memory fallback: track pipeline errors when checkpointer is unavailable
+_pipeline_errors: dict[str, str] = {}
+
+
 async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_preferences: dict):
     """Execute the pipeline graph in the background."""
+    import sys
+
+    print(f"[PIPELINE] _run_pipeline STARTED run_id={run_id}", file=sys.stderr, flush=True)
+    logger.info("pipeline.background_task.start", run_id=run_id)
+
     graph = get_compiled_graph()
     config = {"configurable": {"thread_id": run_id}}
 
@@ -87,9 +96,13 @@ async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_pre
 
     try:
         await graph.ainvoke(initial_state, config=config)
+        print(f"[PIPELINE] _run_pipeline COMPLETED (or interrupted) run_id={run_id}", file=sys.stderr, flush=True)
     except Exception as exc:
+        error_msg = f"파이프라인 실행 실패: {exc}"
+        print(f"[PIPELINE] _run_pipeline FAILED run_id={run_id} error={exc}", file=sys.stderr, flush=True)
         logger.exception("pipeline.failed", run_id=run_id)
-        await _set_error_state(run_id, f"파이프라인 실행 실패: {exc}")
+        _pipeline_errors[run_id] = error_msg
+        await _set_error_state(run_id, error_msg)
 
 
 @router.post("/start", response_model=PipelineStartResponse)
@@ -119,18 +132,29 @@ async def start_pipeline(request: PipelineStartRequest, background_tasks: Backgr
 @router.get("/{run_id}/status", response_model=PipelineStatusResponse)
 async def get_pipeline_status(run_id: str):
     """Get the current status of a pipeline run."""
+    import sys
+
+    # Check in-memory error cache first (covers case when checkpointer write also failed)
+    if run_id in _pipeline_errors:
+        return PipelineStatusResponse(
+            run_id=run_id, status="failed", error=_pipeline_errors[run_id]
+        )
+
     graph = get_compiled_graph()
     config = {"configurable": {"thread_id": run_id}}
 
     try:
         state = await graph.aget_state(config)
-    except Exception:
-        # Transient DB error — return running so frontend keeps polling
-        logger.warning("pipeline.status.db_error", run_id=run_id, exc_info=True)
+    except Exception as exc:
+        print(f"[STATUS] aget_state FAILED run_id={run_id} error={exc}", file=sys.stderr, flush=True)
+        logger.warning("pipeline.status.db_error", run_id=run_id, error=str(exc))
+        # Return running on first few failures; frontend's consecutive error counter handles retries
         return PipelineStatusResponse(run_id=run_id, status="running")
 
-    if state.values is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
+    if state.values is None or not state.values:
+        # State exists but is empty — pipeline background task hasn't started writing yet
+        print(f"[STATUS] empty state run_id={run_id} values={state.values} next={getattr(state, 'next', None)}", file=sys.stderr, flush=True)
+        return PipelineStatusResponse(run_id=run_id, status="running")
 
     # Determine status from state
     error = state.values.get("error")
@@ -141,41 +165,42 @@ async def get_pipeline_status(run_id: str):
         return PipelineStatusResponse(run_id=run_id, status="completed")
 
     script_file_path = state.values.get("script_file_path")
+    next_nodes = state.next if state.next else ()
 
     # Check if waiting for any interrupt gate
-    if state.next:
-        if "topic_selection_gate" in state.next:
+    if next_nodes:
+        if "topic_selection_gate" in next_nodes:
             return PipelineStatusResponse(
                 run_id=run_id, status="waiting_for_topic_selection",
                 current_node="topic_selection_gate",
                 script_file_path=script_file_path,
             )
-        if "speaker_selection_gate" in state.next:
+        if "speaker_selection_gate" in next_nodes:
             return PipelineStatusResponse(
                 run_id=run_id, status="waiting_for_speaker_selection",
                 current_node="speaker_selection_gate",
                 script_file_path=script_file_path,
             )
-        if "human_review_gate" in state.next:
+        if "human_review_gate" in next_nodes:
             return PipelineStatusResponse(
                 run_id=run_id, status="waiting_for_review",
                 current_node="human_review_gate",
                 script_file_path=script_file_path,
             )
-        if "audio_choice_gate" in state.next:
+        if "audio_choice_gate" in next_nodes:
             return PipelineStatusResponse(
                 run_id=run_id, status="waiting_for_audio_choice",
                 current_node="audio_choice_gate",
                 script_file_path=script_file_path,
             )
-        if "hook_prompt_gate" in state.next:
+        if "hook_prompt_gate" in next_nodes:
             return PipelineStatusResponse(
                 run_id=run_id, status="waiting_for_hook_prompt",
                 current_node="hook_prompt_gate",
                 script_file_path=script_file_path,
             )
         return PipelineStatusResponse(
-            run_id=run_id, status="running", current_node=state.next[0],
+            run_id=run_id, status="running", current_node=next_nodes[0],
             script_file_path=script_file_path,
         )
 
@@ -556,3 +581,37 @@ async def stream_pipeline_status(run_id: str):
             yield {"event": "error", "data": str(e)}
 
     return EventSourceResponse(event_generator())
+
+
+@router.get("/{run_id}/debug")
+async def debug_pipeline_state(run_id: str):
+    """Debug endpoint — returns raw pipeline state for troubleshooting."""
+    import sys
+
+    result: dict = {"run_id": run_id}
+
+    # Check in-memory error cache
+    if run_id in _pipeline_errors:
+        result["pipeline_error"] = _pipeline_errors[run_id]
+
+    graph = get_compiled_graph()
+    config = {"configurable": {"thread_id": run_id}}
+
+    try:
+        state = await graph.aget_state(config)
+        result["checkpointer"] = "ok"
+        result["has_values"] = state.values is not None and bool(state.values)
+        result["next"] = list(state.next) if state.next else []
+        if state.values:
+            result["error"] = state.values.get("error")
+            result["has_trend_data"] = state.values.get("trend_data") is not None
+            result["has_script_data"] = state.values.get("script_data") is not None
+            result["has_editor_output"] = state.values.get("editor_output") is not None
+            result["quality"] = state.values.get("quality")
+            result["retry_counts"] = state.values.get("retry_counts", {})
+    except Exception as exc:
+        result["checkpointer"] = "error"
+        result["checkpointer_error"] = str(exc)
+        print(f"[DEBUG] aget_state failed: {exc}", file=sys.stderr, flush=True)
+
+    return result

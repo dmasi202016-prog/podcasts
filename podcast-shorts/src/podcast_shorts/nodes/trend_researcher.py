@@ -78,7 +78,10 @@ async def trend_researcher(state: PipelineState) -> dict:
     """Pull trending topics from multiple sources, analyze why they're trending,
     and select the best topic matching user interest categories.
     """
-    logger.info("trend_researcher.start", run_id=state.get("run_id"))
+    import sys
+    run_id = state.get("run_id")
+    print(f"[NODE] trend_researcher START run_id={run_id}", file=sys.stderr, flush=True)
+    logger.info("trend_researcher.start", run_id=run_id)
 
     retry_counts = state.get("retry_counts", {})
     attempt = retry_counts.get("trend_researcher", 0) + 1
@@ -210,6 +213,7 @@ async def trend_researcher(state: PipelineState) -> dict:
             "attempt": attempt,
         }
 
+        print(f"[NODE] trend_researcher DONE run_id={run_id} topic={trend_data['selected_topic']} score={quality_eval.score}", file=sys.stderr, flush=True)
         logger.info(
             "trend_researcher.done",
             topic=trend_data["selected_topic"],
@@ -218,7 +222,8 @@ async def trend_researcher(state: PipelineState) -> dict:
             attempt=attempt,
         )
 
-    except Exception:
+    except Exception as exc:
+        print(f"[NODE] trend_researcher ERROR run_id={run_id} error={exc}", file=sys.stderr, flush=True)
         logger.exception("trend_researcher.error", attempt=attempt)
         trend_data = {
             "keywords": [],
