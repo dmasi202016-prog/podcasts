@@ -16,7 +16,6 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=2.0.0",
     "langgraph-checkpoint-postgres>=2.0.0",
     "psycopg[binary]>=3.1.0",
-    "psycopg-pool>=3.1.0",
     "supabase>=2.0.0",
 
     # Trend research tools
