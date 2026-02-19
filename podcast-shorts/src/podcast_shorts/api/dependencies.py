@@ -23,13 +23,7 @@ def get_checkpointer() -> BaseCheckpointSaver:
     ):
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-        # Append prepare_threshold=0 for Supabase PgBouncer compatibility
-        conn_string = settings.database_url
-        separator = "&" if "?" in conn_string else "?"
-        if "prepare_threshold" not in conn_string:
-            conn_string = f"{conn_string}{separator}prepare_threshold=0"
-
-        return AsyncPostgresSaver.from_conn_string(conn_string)
+        return AsyncPostgresSaver.from_conn_string(settings.database_url)
     return InMemorySaver()
 
 
