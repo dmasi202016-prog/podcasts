@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Download, RotateCcw } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -10,11 +11,32 @@ import { toFileUrl } from "@/lib/api";
 export function Step6VideoResult() {
   const { state, reset } = usePipeline();
   const result = state.result;
+  const [downloading, setDownloading] = useState(false);
 
   if (!result) return null;
 
   const videoUrl = toFileUrl(result.final_video_path);
   const thumbnailUrl = toFileUrl(result.thumbnail_path);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(videoUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `podcast_shorts_${result.metadata.title || "video"}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      alert("다운로드에 실패했습니다. 영상을 우클릭하여 저장해 주세요.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div>
@@ -54,14 +76,10 @@ export function Step6VideoResult() {
 
       {/* Actions */}
       <div className="flex justify-center gap-3">
-        <a
-          href={videoUrl}
-          download
-          className="inline-flex items-center justify-center font-medium rounded-xl px-8 py-3.5 text-lg bg-violet-600 hover:bg-violet-500 text-white transition-colors"
-        >
+        <Button size="lg" onClick={handleDownload} disabled={downloading}>
           <Download size={18} className="mr-2" />
-          다운로드
-        </a>
+          {downloading ? "다운로드 중..." : "다운로드"}
+        </Button>
         <Button size="lg" variant="secondary" onClick={reset}>
           <RotateCcw size={18} className="mr-2" />
           새로 시작

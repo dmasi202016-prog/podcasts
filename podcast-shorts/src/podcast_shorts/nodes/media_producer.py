@@ -351,17 +351,18 @@ async def media_producer(state: PipelineState) -> dict:
         selected_speakers = state.get("selected_speakers")
         if selected_speakers:
             host_key = selected_speakers.get("host", "me")
+            # Use `or fallback_voice` to handle empty string voice IDs
             voice_ids: dict[str, str] = {
-                "host": _VOICE_ID_MAP.get(host_key, fallback_voice),
+                "host": _VOICE_ID_MAP.get(host_key) or fallback_voice,
             }
             for i, p_key in enumerate(selected_speakers.get("participants", []), 1):
-                voice_ids[f"participant_{i}"] = _VOICE_ID_MAP.get(p_key, fallback_voice)
+                voice_ids[f"participant_{i}"] = _VOICE_ID_MAP.get(p_key) or fallback_voice
         else:
             # Legacy fallback: 3-person family (아빠, 아들, 딸)
             voice_ids = {
-                "host": _VOICE_ID_MAP.get("me", fallback_voice),
-                "son": _VOICE_ID_MAP.get("jiho", fallback_voice),
-                "daughter": _VOICE_ID_MAP.get("jiwon", fallback_voice),
+                "host": _VOICE_ID_MAP.get("me") or fallback_voice,
+                "son": _VOICE_ID_MAP.get("jiho") or fallback_voice,
+                "daughter": _VOICE_ID_MAP.get("jiwon") or fallback_voice,
             }
 
         # ── Check audio source (TTS vs manual) ───────────────────────
@@ -373,7 +374,7 @@ async def media_producer(state: PipelineState) -> dict:
                 *[
                     _use_manual_audio(
                         scene, state.get("audio_files", {}), output_dir,
-                        use_channel_image=(scene["scene_id"] == "cta"),
+                        use_channel_image=scene["scene_id"].startswith("cta"),
                     )
                     for scene in scenes
                 ],
@@ -388,7 +389,7 @@ async def media_producer(state: PipelineState) -> dict:
                     _generate_scene_assets(
                         scene, voice_ids, output_dir,
                         generate_video=False,
-                        use_channel_image=(scene["scene_id"] == "cta"),
+                        use_channel_image=scene["scene_id"].startswith("cta"),
                     )
                     for scene in scenes
                 ],

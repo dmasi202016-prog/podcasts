@@ -225,7 +225,9 @@ async def auto_editor(state: PipelineState) -> dict:
         except (ValueError, AttributeError):
             width, height = 720, 1280
         clips = []
-        cursor = 0.0
+        # srt_cursor: position in Whisper SRT timeline (full_audio, no intro)
+        # video_cursor: position in final video timeline (includes intro)
+        srt_cursor = 0.0
 
         for i, seg in enumerate(audio_segments):
             scene_id = seg["scene_id"]
@@ -250,35 +252,38 @@ async def auto_editor(state: PipelineState) -> dict:
                 logger.warning("auto_editor.missing_image", scene_id=scene_id)
                 continue
 
+            # Pass srt_cursor so captions align with Whisper SRT timestamps
             clip = compose_scene_clip(
                 audio_path=audio_path,
                 image_path=img_path,
                 captions=scene_captions[i] if i < len(scene_captions) else [],
-                scene_start=cursor,
+                scene_start=srt_cursor,
                 video_path=vid_path,
                 width=width,
                 height=height,
             )
             clips.append(clip)
-            cursor += seg["duration"]
+            srt_cursor += seg["duration"]
 
             # Insert channel intro clip right after the hook scene
+            # (intro is NOT in full_audio/SRT, so only video_cursor advances)
             if scene_id == "hook" and os.path.isfile(intro_audio_path):
+                from moviepy import AudioFileClip as _AFC
+                _intro_audio = _AFC(intro_audio_path)
+                intro_duration = _intro_audio.duration
+                _intro_audio.close()
+
                 intro_clip = compose_scene_clip(
                     audio_path=intro_audio_path,
                     image_path=_CHANNEL_AD_IMAGE,
                     captions=[],
-                    scene_start=cursor,
+                    scene_start=0.0,  # no SRT captions for intro
                     video_path=None,
                     width=width,
                     height=height,
                 )
                 clips.append(intro_clip)
-                from moviepy import AudioFileClip as _AFC
-                _intro_audio = _AFC(intro_audio_path)
-                cursor += _intro_audio.duration
-                _intro_audio.close()
-                logger.info("auto_editor.channel_intro_inserted", cursor=cursor)
+                logger.info("auto_editor.channel_intro_inserted", intro_duration=intro_duration)
 
         if not clips:
             raise RuntimeError("No scene clips could be assembled")

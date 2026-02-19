@@ -7,6 +7,7 @@ from pathlib import Path
 import structlog
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
+from tavily import TavilyClient
 
 from podcast_shorts.config import settings
 from podcast_shorts.graph.state import PipelineState, QualityAssessment, ScriptData
@@ -36,10 +37,10 @@ SCRIPT_SYSTEM_PROMPT_TEMPLATE = """\
 1. 모든 대사는 한국어로 작성하세요.
 2. 대화체(구어체)로 자연스럽게 — 실제 가족 대화처럼 작성하세요.
 3. 다음 구조를 반드시 따르세요:
-   - **Hook**: 사회자가 흥미로운 주제를 꺼내며 시작 (5-10초, speaker: host)
-   - **Body 파트 1**: 주제 소개 — 사회자 설명 + 참여자 질문 (15-25초)
-   - **Body 파트 2**: 핵심 내용 — 사회자 설명 + 참여자 반응/사례 (20-30초)
-   - **Body 파트 3**: 의미/인사이트 — 가족 토론 (15-25초)
+   - **Hook**: 사회자가 흥미롭고 강렬하게 주제를 꺼내며 시작 (5-10초, speaker: host)
+   - **Body 파트 1 (아이스브레이킹)**: 이 주제가 왜 지금 이슈인지 쉽고 재미있게 설명. 사회자가 트렌드 배경을 풀어주고 참여자가 "아 그래?" 반응 (15-25초)
+   - **Body 파트 2 (전문가 Q&A)**: 참여자가 전문 기자처럼 날카롭고 구체적인 질문을 던지고 사회자가 심층 분석으로 답변 (20-30초)
+   - **Body 파트 3 (심화 Q&A)**: 참여자가 더 도발적이고 핵심을 찌르는 후속 질문, 사회자가 인사이트 있는 답변과 의미 해석 (15-25초)
    - **CTA**: 사회자가 마무리 + 참여자 인사 (5-10초)
 4. 장면별 image_prompt는 반드시 영어로 작성하세요 (DALL-E 3 용도).
    - **반드시 세로 구도(portrait orientation)** 로 묘사하세요.
@@ -51,9 +52,9 @@ SCRIPT_SYSTEM_PROMPT_TEMPLATE = """\
 ## 장면 구성 (중요!)
 - 화자가 바뀔 때마다 새 장면으로 분리합니다. 하나의 장면 = 한 명의 화자.
 - Hook: 1개 장면 (scene_id: "hook", speaker: "host")
-- Body 파트 1: 화자별 분리 (scene_id: "body_1_1", "body_1_2", ...)
-- Body 파트 2: 화자별 분리 (scene_id: "body_2_1", "body_2_2", ...)
-- Body 파트 3: 화자별 분리 (scene_id: "body_3_1", "body_3_2", ...)
+- Body 파트 1 (아이스브레이킹): 화자별 분리 (scene_id: "body_1_1", "body_1_2", ...)
+- Body 파트 2 (기자 Q&A): 참여자 질문 → 사회자 답변 형식 (scene_id: "body_2_1", "body_2_2", ...) — 참여자 질문은 전문 기자처럼 날카롭고 구체적으로
+- Body 파트 3 (심화 Q&A): 참여자 심화 질문 → 사회자 인사이트 답변 (scene_id: "body_3_1", "body_3_2", ...) — 더 도발적이고 핵심을 찌르는 질문
 - CTA: 1-2개 장면 (scene_id: "cta" 또는 "cta_1", "cta_2")
 - 각 장면마다 **서로 다른 image_prompt**를 생성하여 시각적으로 다양하게 만드세요.
 - 전체 장면 수는 10-20개 정도가 적절합니다.
@@ -126,20 +127,27 @@ def _build_system_prompt(selected_speakers: dict | None) -> tuple[str, dict[str,
 
 SCRIPT_USER_PROMPT = """\
 아래 트렌딩 주제에 대한 **가족 팟캐스트 쇼츠** 대본을 작성해 주세요.
-아빠(host)가 주제를 설명하고, 아들(son)과 딸(daughter)이 질문하고 반응하는 대화형 대본입니다.
 
 ## 주제 정보
 - 선정 주제: {selected_topic}
 - 카테고리: {category}
-- 주제 요약:
+- 트렌드 요약:
 {topic_summaries}
 
-## 사용자 페르소나 (아빠/진행자)
+## 최신 뉴스 (Tavily 검색 결과)
+{latest_news}
+
+## 사용자 페르소나 (진행자)
 {persona_info}
 
 ## 이미지 프롬프트 가이드
 - 주제 "{selected_topic}"를 모든 image_prompt에 시각적 요소로 포함하세요.
 - 세로 구도(portrait, vertical composition)로 묘사하세요.
+
+## 대본 작성 지침
+- Body 1(아이스브레이킹): 위 최신 뉴스를 바탕으로 "왜 지금 이슈인지"를 쉽고 재미있게 설명하세요.
+- Body 2(전문가 Q&A): 참여자가 전문 기자처럼 구체적이고 날카로운 질문 → 사회자 심층 분석 답변. 최신 데이터나 사실을 활용하세요.
+- Body 3(심화 Q&A): 더 도발적이고 핵심을 찌르는 심화 질문 → 인사이트 있는 답변과 의미 해석.
 
 위 정보를 바탕으로 Hook → Body(3파트) → CTA 구조의 가족 대화형 대본을 작성해 주세요.
 각 장면에 반드시 speaker 필드를 포함하세요."""
@@ -245,7 +253,29 @@ async def scriptwriter(state: PipelineState) -> dict:
 
         persona_info = "\n".join(persona_parts) if persona_parts else "(페르소나 정보 없음 — 일반적인 친근한 말투로 작성)"
 
-        # ── Step 1b: Build dynamic speaker prompt ─────────────────────
+        # ── Step 1b: Tavily latest news search ───────────────────────
+        latest_news_text = ""
+        if settings.tavily_api_key:
+            try:
+                tavily = TavilyClient(api_key=settings.tavily_api_key)
+                search_results = tavily.search(
+                    query=f"{selected_topic} 최신 뉴스 이슈",
+                    search_depth="advanced",
+                    max_results=5,
+                    include_answer=True,
+                )
+                news_items = []
+                if search_results.get("answer"):
+                    news_items.append(f"요약: {search_results['answer']}")
+                for r in search_results.get("results", [])[:4]:
+                    content = r.get("content", "")[:300]
+                    news_items.append(f"- {r.get('title', '')}: {content}")
+                latest_news_text = "\n".join(news_items)
+                logger.info("scriptwriter.tavily_search_done", results=len(search_results.get("results", [])))
+            except Exception:
+                logger.warning("scriptwriter.tavily_search_failed")
+
+        # ── Step 1c: Build dynamic speaker prompt ─────────────────────
         selected_speakers = state.get("selected_speakers")
         system_prompt, speaker_label = _build_system_prompt(selected_speakers)
 
@@ -280,6 +310,7 @@ async def scriptwriter(state: PipelineState) -> dict:
                 selected_topic=selected_topic,
                 category=category,
                 topic_summaries=topic_summaries_text,
+                latest_news=latest_news_text or "(최신 뉴스 검색 결과 없음)",
                 persona_info=persona_info,
             )
 
