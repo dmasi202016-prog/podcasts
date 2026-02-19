@@ -1,5 +1,7 @@
 """Application configuration loaded from environment variables."""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
@@ -54,6 +56,9 @@ class Settings(BaseSettings):
     # Output
     output_base_dir: str = "./output"
 
+    # Assets directory (override via ASSETS_DIR env var for Docker deployments)
+    assets_dir: str = ""
+
     # Video Output
     video_width: int = 1080
     video_height: int = 1920
@@ -61,3 +66,27 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_assets_dir() -> Path:
+    """Return the resolved assets directory path.
+
+    Priority:
+    1. ASSETS_DIR env var (explicit override)
+    2. <project_root>/assets (local development — works when running from source)
+    3. /app/assets (Docker container fallback)
+    """
+    if settings.assets_dir:
+        return Path(settings.assets_dir)
+
+    # Try local development path (relative to this file in source tree)
+    local = Path(__file__).resolve().parents[2] / "assets"
+    if local.is_dir():
+        return local
+
+    # Docker fallback
+    docker = Path("/app/assets")
+    if docker.is_dir():
+        return docker
+
+    return local  # Return local path anyway for error messages

@@ -21,7 +21,9 @@ from moviepy.audio.fx import MultiplyVolume
 logger = structlog.get_logger()
 
 # Korean bold font (extracted ExtraBold from AppleSDGothicNeo.ttc)
-_ASSETS_DIR = Path(__file__).resolve().parents[3] / "assets"
+from podcast_shorts.config import get_assets_dir
+
+_ASSETS_DIR = get_assets_dir()
 _KOREAN_FONT_BOLD = str(_ASSETS_DIR / "fonts" / "AppleSDGothicNeo-ExtraBold.ttf")
 
 

@@ -19,9 +19,11 @@ from podcast_shorts.config import settings
 logger = structlog.get_logger()
 
 # Resolve project root paths for static file serving
+from podcast_shorts.config import get_assets_dir
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_OUTPUT_DIR = _PROJECT_ROOT / "output"
-_ASSETS_DIR = _PROJECT_ROOT / "assets"
+_OUTPUT_DIR = Path(settings.output_base_dir)
+_ASSETS_DIR = get_assets_dir()
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ from pathlib import Path
 import structlog
 from moviepy import AudioFileClip, concatenate_audioclips
 
-from podcast_shorts.config import settings
+from podcast_shorts.config import get_assets_dir, settings
 from podcast_shorts.graph.state import (
     AudioSegment,
     ImageAsset,
@@ -25,7 +25,7 @@ from podcast_shorts.tools.dalle import dalle_generate
 from podcast_shorts.tools.elevenlabs import elevenlabs_tts
 
 # Channel ad image used for CTA scene (skip DALL-E for CTA)
-_ASSETS_DIR = Path(__file__).resolve().parents[3] / "assets"
+_ASSETS_DIR = get_assets_dir()
 _CHANNEL_AD_IMAGE = str(_ASSETS_DIR / "channel_ad.png")
 
 logger = structlog.get_logger()

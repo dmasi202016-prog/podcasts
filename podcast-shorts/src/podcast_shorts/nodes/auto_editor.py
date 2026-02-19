@@ -9,7 +9,7 @@ from pathlib import Path
 import pysrt
 import structlog
 
-from podcast_shorts.config import settings
+from podcast_shorts.config import get_assets_dir, settings
 from podcast_shorts.graph.state import (
     AudioSegment,
     EditorOutput,
@@ -23,7 +23,7 @@ from podcast_shorts.tools.moviepy_tools import compose_scene_clip, render_final_
 from podcast_shorts.tools.whisper import whisper_transcribe
 
 # Channel intro assets
-_ASSETS_DIR = Path(__file__).resolve().parents[3] / "assets"
+_ASSETS_DIR = get_assets_dir()
 _CHANNEL_AD_IMAGE = str(_ASSETS_DIR / "channel_ad.png")
 _CHANNEL_INTRO_TEXT = "바로지금! 지금 알아야할 소식과 함께합니다."
 
