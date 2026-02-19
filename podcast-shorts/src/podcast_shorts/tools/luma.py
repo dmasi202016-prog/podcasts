@@ -43,8 +43,11 @@ async def luma_video_generate(
 
     client = AsyncLumaAI(auth_token=settings.luma_api_key)
 
+    # Force portrait/vertical orientation
+    portrait_prompt = f"Vertical portrait video, 9:16 orientation, do not generate landscape. {prompt}"
+
     generation = await client.generations.create(
-        prompt=prompt,
+        prompt=portrait_prompt,
         model="ray-2",
         aspect_ratio="9:16",
         resolution="1080p",

@@ -68,7 +68,7 @@ def compose_scene_clip(
 
     # --- Caption TextClips (bold, bottom-center aligned) ---
     caption_clips = []
-    caption_margin_bottom = 120  # pixels from bottom edge
+    caption_margin_bottom = 220  # pixels from bottom edge — moved up to prevent clipping
 
     for sub in captions:
         # Convert caption times to scene-local offsets
@@ -84,10 +84,10 @@ def compose_scene_clip(
             TextClip(
                 text=sub.text,
                 font=_KOREAN_FONT_BOLD,
-                font_size=54,
+                font_size=44,
                 color="white",
                 stroke_color="black",
-                stroke_width=4,
+                stroke_width=3,
                 method="caption",
                 size=(width - 80, None),
                 text_align="center",

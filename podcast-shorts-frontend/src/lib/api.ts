@@ -109,6 +109,23 @@ export async function uploadAudioFiles(
   return res.json() as Promise<UploadAudioResponse>;
 }
 
+export async function uploadSingleAudioFile(
+  runId: string,
+  file: File,
+): Promise<UploadAudioResponse> {
+  const formData = new FormData();
+  formData.append("audio", file);
+  const res = await fetch(`${API_BASE}/${runId}/upload-full-audio`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API error ${res.status}: ${body}`);
+  }
+  return res.json() as Promise<UploadAudioResponse>;
+}
+
 export async function submitAudioChoice(
   runId: string,
   audioSource: "tts" | "manual",

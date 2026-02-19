@@ -415,6 +415,60 @@ async def upload_audio_files(run_id: str, request: Request):
     return {"run_id": run_id, "audio_files": audio_files}
 
 
+@router.post("/{run_id}/upload-full-audio")
+async def upload_full_audio(run_id: str, request: Request):
+    """Upload a single full-length audio file and auto-split into per-scene segments."""
+    graph = get_compiled_graph()
+    config = {"configurable": {"thread_id": run_id}}
+    try:
+        state = await graph.aget_state(config)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
+    if not state.next or "audio_choice_gate" not in state.next:
+        raise HTTPException(status_code=400, detail="Pipeline is not waiting for audio choice")
+
+    script_data = state.values.get("script_data") or {}
+    scenes = script_data.get("scenes", [])
+
+    base = Path(settings.output_base_dir).resolve() / run_id / "uploaded_audio"
+    base.mkdir(parents=True, exist_ok=True)
+
+    form = await request.form()
+    audio_upload = form.get("audio")
+    if not audio_upload or not hasattr(audio_upload, "read"):
+        raise HTTPException(status_code=400, detail="No audio file provided (field name: 'audio')")
+
+    ext = Path(getattr(audio_upload, "filename", "audio.mp3") or "audio.mp3").suffix or ".mp3"
+    full_audio_path = base / f"full_audio{ext}"
+    content = await audio_upload.read()
+    full_audio_path.write_bytes(content)
+
+    # Split full audio into per-scene segments proportional to script durations
+    from moviepy import AudioFileClip as _AFC
+
+    clip = _AFC(str(full_audio_path))
+    full_duration = clip.duration
+    total_script_duration = sum(s.get("duration", 5.0) for s in scenes) or full_duration
+
+    audio_files: dict[str, str] = {}
+    cursor = 0.0
+    for scene in scenes:
+        scene_id = scene["scene_id"]
+        ratio = scene.get("duration", 5.0) / total_script_duration
+        seg_duration = ratio * full_duration
+        end = min(cursor + seg_duration, full_duration)
+        seg = clip.subclipped(cursor, end)
+        out_path = str(base / f"{scene_id}.mp3")
+        seg.write_audiofile(out_path, logger=None)
+        seg.close()
+        audio_files[scene_id] = out_path
+        cursor = end
+    clip.close()
+
+    logger.info("upload_full_audio.done", run_id=run_id, scenes=len(audio_files))
+    return {"run_id": run_id, "audio_files": audio_files}
+
+
 @router.get("/{run_id}/audio-choice", response_model=AudioChoiceResponse)
 async def get_audio_choice_status(run_id: str):
     """Check if pipeline is waiting for audio source selection."""
