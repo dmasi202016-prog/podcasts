@@ -125,14 +125,14 @@ def render_final_video(
     scene_clips: list[VideoClip],
     output_path: str,
     bgm_path: str | None = None,
-    fps: int = 30,
+    fps: int = 24,
     audio_codec: str = "aac",
 ) -> str:
     """Concatenate scene clips, optionally mix BGM, and render to *output_path*.
 
     Returns *output_path* on success.
     """
-    final = concatenate_videoclips(scene_clips, method="compose")
+    final = concatenate_videoclips(scene_clips, method="chain")
 
     # --- BGM mixing (if provided) ---
     if bgm_path:
@@ -154,7 +154,8 @@ def render_final_video(
         fps=fps,
         codec="libx264",
         audio_codec=audio_codec,
-        preset="medium",
+        preset="ultrafast",
+        threads=2,
         logger=None,
     )
 

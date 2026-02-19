@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     # Video Output
     video_width: int = 1080
     video_height: int = 1920
-    video_fps: int = 30
+    video_fps: int = 24
 
 
 settings = Settings()
