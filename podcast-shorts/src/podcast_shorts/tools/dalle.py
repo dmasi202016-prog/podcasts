@@ -33,6 +33,7 @@ async def dalle_generate(
         RuntimeError: If no image URL is returned or download fails.
     """
     # DALL-E 3 supported sizes: 1024x1024 | 1024x1792 | 1792x1024
+    # body uses 1024x1024 (1:1) — fit-scaled to center zone in compositor (no crop)
     size = "1024x1024" if scene_type == "body" else "1024x1792"
 
     logger.info(

@@ -73,19 +73,30 @@ def compose_scene_clip(
         # Dark gray full-frame base
         full_bg = ColorClip(size=(width, height), color=(35, 35, 35)).with_duration(scene_duration)
 
-        # Image/video scaled to fill center zone
+        # Image/video fit into center zone (preserve aspect ratio, no crop, dark gray fills gaps)
         if video_path:
             raw = VideoFileClip(video_path)
             if raw.duration < scene_duration:
                 loops_needed = int(scene_duration / raw.duration) + 1
                 raw = concatenate_videoclips([raw] * loops_needed)
-            raw = raw.subclipped(0, scene_duration).resized((width, image_height)).with_position((0, top_h))
+            raw = raw.subclipped(0, scene_duration)
+            vw, vh = raw.size
+            scale = min(width / vw, image_height / vh)
+            nw, nh = int(vw * scale), int(vh * scale)
+            x_off = (width - nw) // 2
+            y_off = top_h + (image_height - nh) // 2
+            raw = raw.resized((nw, nh)).with_position((x_off, y_off))
         else:
+            _img = ImageClip(image_path)
+            iw, ih = _img.size
+            scale = min(width / iw, image_height / ih)
+            nw, nh = int(iw * scale), int(ih * scale)
+            x_off = (width - nw) // 2
+            y_off = top_h + (image_height - nh) // 2
             raw = (
-                ImageClip(image_path)
-                .resized((width, image_height))
+                _img.resized((nw, nh))
                 .with_duration(scene_duration)
-                .with_position((0, top_h))
+                .with_position((x_off, y_off))
             )
 
         # Top banner — trend summary in dark yellow

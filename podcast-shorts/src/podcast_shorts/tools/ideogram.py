@@ -15,7 +15,7 @@ _IDEOGRAM_API_URL = "https://api.ideogram.ai/generate"
 
 # scene_type → Ideogram aspect ratio enum
 _ASPECT_MAP: dict[str, str] = {
-    "body": "ASPECT_4_5",
+    "body": "ASPECT_3_4",   # 3:4 portrait — fits center zone between top/bottom banners
     "hook": "ASPECT_9_16",
     "cta": "ASPECT_9_16",
     "default": "ASPECT_9_16",
