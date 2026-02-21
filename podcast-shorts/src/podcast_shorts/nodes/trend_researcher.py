@@ -77,6 +77,9 @@ QUALITY_USER_PROMPT = """\
 async def trend_researcher(state: PipelineState) -> dict:
     """Pull trending topics from multiple sources, analyze why they're trending,
     and select the best topic matching user interest categories.
+
+    If the user provided direct keywords, skip external search and use the
+    keyword as the selected topic immediately (no topic selection gate needed).
     """
     import sys
     run_id = state.get("run_id")
@@ -85,6 +88,40 @@ async def trend_researcher(state: PipelineState) -> dict:
 
     retry_counts = state.get("retry_counts", {})
     attempt = retry_counts.get("trend_researcher", 0) + 1
+
+    # ── Direct topic mode: keyword provided by user → skip trend search ──
+    direct_keywords: list[str] = state.get("keywords") or []
+    if direct_keywords:
+        topic = direct_keywords[0].strip()
+        logger.info("trend_researcher.direct_topic", topic=topic)
+        trend_data: TrendData = {
+            "keywords": [topic],
+            "topic_summaries": [
+                {
+                    "keyword": topic,
+                    "summary": f"사용자가 직접 입력한 주제: {topic}",
+                    "source": "user_input",
+                    "trending_score": 1.0,
+                }
+            ],
+            "selected_topic": topic,
+            "category": "사용자 선택",
+        }
+        quality: QualityAssessment = {
+            "node_name": "trend_researcher",
+            "passed": True,
+            "score": 1.0,
+            "feedback": "직접 입력된 주제 사용",
+            "attempt": attempt,
+        }
+        retry_counts = {**retry_counts, "trend_researcher": attempt}
+        return {
+            "trend_data": trend_data,
+            "quality": quality,
+            "retry_counts": retry_counts,
+            "topic_selected": topic,
+            "topic_selection_approved": True,
+        }
 
     try:
         # ── Step 1: Parallel source collection ──────────────────────────

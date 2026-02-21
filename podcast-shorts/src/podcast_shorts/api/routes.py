@@ -91,6 +91,7 @@ async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_pre
         "user_id": user_id,
         "user_preferences": user_preferences,
         "run_id": run_id,
+        "keywords": keywords or [],
         "video_resolution": resolution,
         "image_generator": image_generator,
         "hook_mode": hook_mode,

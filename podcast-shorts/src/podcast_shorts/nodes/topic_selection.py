@@ -18,7 +18,16 @@ async def topic_selection_gate(state: PipelineState) -> dict:
 
     On resume, the Command(resume=...) payload provides:
       {"selected_topic": "키워드"}
+
+    If topic_selection_approved is already True (direct topic input mode),
+    this gate passes through immediately without interrupting.
     """
+    # Direct topic mode: already approved by trend_researcher, skip interrupt
+    if state.get("topic_selection_approved"):
+        topic = state.get("topic_selected") or (state.get("trend_data") or {}).get("selected_topic", "")
+        logger.info("topic_selection_gate.skip", topic=topic, run_id=state.get("run_id"))
+        return {}
+
     logger.info("topic_selection_gate.waiting", run_id=state.get("run_id"))
 
     trend_data = state.get("trend_data") or {}

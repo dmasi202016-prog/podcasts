@@ -131,6 +131,7 @@ class PipelineState(TypedDict):
     user_id: str
     user_preferences: dict
     run_id: str
+    keywords: Optional[list[str]]  # direct topic input (skips trend search)
 
     # Hook video prompt gate
     hook_video_prompt: Optional[str]
