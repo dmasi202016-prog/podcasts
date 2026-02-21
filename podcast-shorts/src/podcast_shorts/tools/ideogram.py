@@ -60,7 +60,7 @@ async def ideogram_generate(
         resp = await client.post(
             _IDEOGRAM_API_URL,
             headers={
-                "Api-Key": settings.ideogram_api_key,
+                "Api-Key": settings.ideao_api_key,
                 "Content-Type": "application/json",
             },
             json={
