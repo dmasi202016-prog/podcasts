@@ -43,15 +43,20 @@ async def ideogram_generate(
     aspect_ratio = _ASPECT_MAP.get(scene_type, "ASPECT_9_16")
 
     # Standard prefixes applied to every image
-    full_prompt = (
+    prefix = (
         "No text, no letters, no words, no typography visible in the image. "
         "If any human or person must appear, replace with a cute cartoon cat character. "
-        f"Portrait orientation. {prompt}"
+        "Portrait orientation. "
     )
+    # Ideogram API hard limit is 1500 characters
+    max_prompt_len = 1500 - len(prefix)
+    truncated_prompt = prompt[:max_prompt_len] if len(prompt) > max_prompt_len else prompt
+    full_prompt = prefix + truncated_prompt
 
     logger.info(
         "ideogram_generate.start",
         prompt_len=len(full_prompt),
+        prompt_preview=full_prompt[:200],
         aspect_ratio=aspect_ratio,
         scene_type=scene_type,
     )
@@ -72,7 +77,13 @@ async def ideogram_generate(
                 }
             },
         )
-        resp.raise_for_status()
+        if not resp.is_success:
+            logger.error(
+                "ideogram_generate.api_error",
+                status_code=resp.status_code,
+                response_body=resp.text[:500],
+            )
+            resp.raise_for_status()
         data = resp.json()
 
     image_url = data["data"][0]["url"]
