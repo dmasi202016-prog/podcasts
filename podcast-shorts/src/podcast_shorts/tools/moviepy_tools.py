@@ -55,46 +55,72 @@ def compose_scene_clip(
     scene_duration = audio.duration
 
     # --- Background layer ---
-    if trend_summary:
-        # Body scene: image occupies lower 4:5 area; top band shows trend summary.
-        image_height = int(width * 5 / 4)
-        banner_height = height - image_height  # pixels reserved at top for banner
+    _BOTTOM_TAGLINE = "바로지금, 지금알아야할소식"
 
-        # Dark gray full-frame background
+    if trend_summary:
+        # Body scene layout (top-to-bottom):
+        #   ┌─────────────────────────┐
+        #   │  top banner (trend text)│  dark gray + dark yellow text
+        #   ├─────────────────────────┤
+        #   │     image  (center)     │
+        #   ├─────────────────────────┤
+        #   │  bottom banner (tagline)│  dark gray + white text
+        #   └─────────────────────────┘
+        top_h = max(120, height // 8)    # top banner height
+        bot_h = max(90, height // 10)    # bottom banner height
+        image_height = height - top_h - bot_h
+
+        # Dark gray full-frame base
         full_bg = ColorClip(size=(width, height), color=(35, 35, 35)).with_duration(scene_duration)
 
-        # Image/video scaled to 4:5 area, positioned below the banner
+        # Image/video scaled to fill center zone
         if video_path:
             raw = VideoFileClip(video_path)
             if raw.duration < scene_duration:
                 loops_needed = int(scene_duration / raw.duration) + 1
                 raw = concatenate_videoclips([raw] * loops_needed)
-            raw = raw.subclipped(0, scene_duration).resized((width, image_height)).with_position((0, banner_height))
+            raw = raw.subclipped(0, scene_duration).resized((width, image_height)).with_position((0, top_h))
         else:
             raw = (
                 ImageClip(image_path)
                 .resized((width, image_height))
                 .with_duration(scene_duration)
-                .with_position((0, banner_height))
+                .with_position((0, top_h))
             )
 
-        # Trend summary text — dark yellow on dark gray banner
-        banner_font_size = max(22, banner_height // 7)
+        # Top banner — trend summary in dark yellow
+        top_font_size = max(22, top_h // 5)
         trend_clip = (
             TextClip(
                 text=trend_summary,
                 font=_KOREAN_FONT_BOLD,
-                font_size=banner_font_size,
-                color=(210, 180, 40),   # dark-ish yellow
+                font_size=top_font_size,
+                color=(210, 180, 40),  # dark yellow
                 method="caption",
-                size=(width - 60, banner_height - 20),
+                size=(width - 60, top_h - 16),
                 text_align="center",
             )
-            .with_position(("center", 10))
+            .with_position(("center", 8))
             .with_duration(scene_duration)
         )
 
-        base_layers: list = [full_bg, raw, trend_clip]
+        # Bottom banner — fixed tagline in white
+        bot_font_size = max(20, bot_h // 5)
+        tagline_clip = (
+            TextClip(
+                text=_BOTTOM_TAGLINE,
+                font=_KOREAN_FONT_BOLD,
+                font_size=bot_font_size,
+                color=(255, 255, 255),  # white
+                method="caption",
+                size=(width - 60, bot_h - 16),
+                text_align="center",
+            )
+            .with_position(("center", height - bot_h + 8))
+            .with_duration(scene_duration)
+        )
+
+        base_layers: list = [full_bg, raw, trend_clip, tagline_clip]
     else:
         if video_path:
             bg = VideoFileClip(video_path)
@@ -112,7 +138,9 @@ def compose_scene_clip(
 
     # --- Caption TextClips (bold, bottom-center aligned) ---
     caption_clips = []
-    caption_margin_bottom = 220  # pixels from bottom edge — moved up to prevent clipping
+    # For body scenes (with bottom banner), push captions above the bottom banner
+    _bot_h = max(90, height // 10) if trend_summary else 0
+    caption_margin_bottom = max(220, _bot_h + 60)  # always above bottom banner
 
     for sub in captions:
         # Convert caption times to scene-local offsets
