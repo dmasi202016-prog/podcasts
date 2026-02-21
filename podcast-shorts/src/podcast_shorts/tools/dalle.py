@@ -47,7 +47,9 @@ async def dalle_generate(
 
     # Standard prefixes: no text, cat for people, portrait orientation
     full_prompt = (
-        "No text, no letters, no words, no typography visible in the image. "
+        "ABSOLUTE RULE: zero text, zero letters, zero words, zero numbers, zero symbols, "
+        "zero signs, zero labels, zero captions, zero watermarks, zero typography of any kind — "
+        "not even a single character anywhere in the image. Pure visual only. "
         "Art style: colorful anime illustration, vibrant cel-shading, smooth clean lines. "
         "All human characters must be drawn in anime/animation style — no photorealistic people. "
         f"Portrait orientation, vertical format, do not generate landscape. {prompt}"
