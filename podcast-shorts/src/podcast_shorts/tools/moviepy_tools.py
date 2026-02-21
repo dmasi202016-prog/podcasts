@@ -79,7 +79,8 @@ def compose_scene_clip(
             if raw.duration < scene_duration:
                 loops_needed = int(scene_duration / raw.duration) + 1
                 raw = concatenate_videoclips([raw] * loops_needed)
-            raw = raw.subclipped(0, scene_duration)
+            end_t = min(scene_duration, raw.duration - 0.04)
+            raw = raw.subclipped(0, end_t)
             vw, vh = raw.size
             scale = min(width / vw, image_height / vh)
             nw, nh = int(vw * scale), int(vh * scale)
@@ -143,7 +144,8 @@ def compose_scene_clip(
             if bg.duration < scene_duration:
                 loops_needed = int(scene_duration / bg.duration) + 1
                 bg = concatenate_videoclips([bg] * loops_needed)
-            bg = bg.subclipped(0, scene_duration).resized((width, height))
+            end_t = min(scene_duration, bg.duration - 0.04)
+            bg = bg.subclipped(0, end_t).resized((width, height))
         else:
             bg = (
                 ImageClip(image_path)

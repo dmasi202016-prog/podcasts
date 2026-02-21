@@ -24,6 +24,10 @@ class PipelineStartRequest(BaseModel):
         default="dalle",
         description="Image generator: 'dalle' (DALL-E 3) or 'ideogram' (Ideogram V2)",
     )
+    hook_mode: str = Field(
+        default="video",
+        description="Hook scene mode: 'video' (Luma AI video) or 'image' (static AI image)",
+    )
 
 
 class PipelineStartResponse(BaseModel):

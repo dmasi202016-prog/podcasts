@@ -197,8 +197,9 @@ async def auto_editor(state: PipelineState) -> dict:
 
         # ── Step 3.5: Generate hook video from approved prompt ─────────
         hook_video_prompt = state.get("hook_video_prompt")
+        hook_mode = state.get("hook_mode", "video")
         hook_video_path: str | None = None
-        if hook_video_prompt:
+        if hook_video_prompt and hook_mode == "video":
             run_output_dir = Path(settings.output_base_dir) / run_id
             hook_vid_dir = run_output_dir / "video"
             hook_vid_dir.mkdir(parents=True, exist_ok=True)
@@ -226,11 +227,13 @@ async def auto_editor(state: PipelineState) -> dict:
             width, height = 720, 1280
 
         # One-line trend summary shown in the dark banner above body-scene images
-        _raw_topic = (
-            trend_data.get("selected_topic")
-            or state.get("topic_selected", "")
+        # Prefer LLM-generated curiosity-inducing banner text from scriptwriter
+        trend_summary_text = (
+            (state.get("script_data") or {}).get("trend_banner_text")
+            or (lambda t: (t[:55] + "…") if len(t) > 55 else t)(
+                trend_data.get("selected_topic") or state.get("topic_selected", "")
+            )
         )
-        trend_summary_text = (_raw_topic[:55] + "…") if len(_raw_topic) > 55 else _raw_topic
 
         clips = []
         # srt_cursor: position in Whisper SRT timeline (full_audio, no intro)

@@ -58,7 +58,7 @@ async def _set_error_state(run_id: str, error_msg: str) -> None:
 _pipeline_errors: dict[str, str] = {}
 
 
-async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_preferences: dict, resolution: str = "720x1280", image_generator: str = "dalle"):
+async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_preferences: dict, resolution: str = "720x1280", image_generator: str = "dalle", hook_mode: str = "video"):
     """Execute the pipeline graph in the background."""
     import sys
 
@@ -93,6 +93,7 @@ async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_pre
         "run_id": run_id,
         "video_resolution": resolution,
         "image_generator": image_generator,
+        "hook_mode": hook_mode,
         "error": None,
     }
 
@@ -127,6 +128,7 @@ async def start_pipeline(request: PipelineStartRequest, background_tasks: Backgr
         user_preferences=request.user_preferences,
         resolution=request.resolution,
         image_generator=request.image_generator,
+        hook_mode=request.hook_mode,
     )
 
     logger.info("pipeline.started", run_id=run_id, user_id=request.user_id)

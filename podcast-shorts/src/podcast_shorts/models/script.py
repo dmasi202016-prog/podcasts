@@ -64,6 +64,9 @@ class ScriptGenerationResult(BaseModel):
         min_length=5,
         max_length=30,
     )
+    trend_banner_text: str = Field(
+        description="상단 트렌드 배너에 표시될 한 문장 (한국어, 25자 이내, 핵심 궁금증 유발 — 예: '이걸 모르면 손해본다?')"
+    )
     estimated_duration_sec: float = Field(
         gt=0, description="전체 스크립트 예상 소요 시간 (초, 60~180초 권장)"
     )

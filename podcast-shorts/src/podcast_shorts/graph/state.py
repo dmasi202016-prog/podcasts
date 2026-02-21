@@ -39,6 +39,7 @@ class ScriptData(TypedDict):
     hook: str
     cta: str
     estimated_duration_sec: float
+    trend_banner_text: str  # 상단 배너 한 문장 (궁금증 유발)
 
 
 class AudioSegment(TypedDict):
@@ -140,6 +141,9 @@ class PipelineState(TypedDict):
 
     # Image generator ("dalle" | "ideogram")
     image_generator: Optional[str]
+
+    # Hook scene mode ("video" | "image")
+    hook_mode: Optional[str]
 
     # Error tracking
     error: Optional[str]
