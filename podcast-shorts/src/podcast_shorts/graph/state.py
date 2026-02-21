@@ -138,5 +138,8 @@ class PipelineState(TypedDict):
     # Video resolution ("1080x1920" | "720x1280")
     video_resolution: Optional[str]
 
+    # Image generator ("dalle" | "ideogram")
+    image_generator: Optional[str]
+
     # Error tracking
     error: Optional[str]

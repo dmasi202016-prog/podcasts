@@ -20,6 +20,10 @@ class PipelineStartRequest(BaseModel):
         default="720x1280",
         description="Video resolution: '1080x1920' (Full HD) or '720x1280' (HD, lower memory)",
     )
+    image_generator: str = Field(
+        default="dalle",
+        description="Image generator: 'dalle' (DALL-E 3) or 'ideogram' (Ideogram V2)",
+    )
 
 
 class PipelineStartResponse(BaseModel):

@@ -29,10 +29,16 @@ const RESOLUTIONS = [
   { value: "1080x1920", label: "Full HD (1080x1920)", desc: "고화질, 더 많은 메모리 필요" },
 ];
 
+const IMAGE_GENERATORS = [
+  { value: "dalle", label: "DALL-E 3", desc: "OpenAI · 안정적, 빠름" },
+  { value: "ideogram", label: "Ideogram V2", desc: "4:5 비율 지원, 텍스트 없는 이미지" },
+];
+
 export function Step1Category() {
   const { state, startPipeline } = usePipeline();
   const [selected, setSelected] = useState<string[]>([]);
   const [resolution, setResolution] = useState("720x1280");
+  const [imageGenerator, setImageGenerator] = useState("dalle");
   const [starting, setStarting] = useState(false);
 
   const toggle = (id: string) => {
@@ -44,7 +50,7 @@ export function Step1Category() {
   const handleStart = async () => {
     if (selected.length === 0) return;
     setStarting(true);
-    await startPipeline(selected, resolution);
+    await startPipeline(selected, resolution, imageGenerator);
   };
 
   if (starting && state.isLoading) {
@@ -97,6 +103,26 @@ export function Step1Category() {
             >
               <div className="text-sm font-medium">{r.label}</div>
               <div className="text-xs mt-1 opacity-70">{r.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-8">
+        <h3 className="text-sm font-medium text-zinc-300 mb-3">이미지 생성기</h3>
+        <div className="flex gap-3">
+          {IMAGE_GENERATORS.map((g) => (
+            <button
+              key={g.value}
+              onClick={() => setImageGenerator(g.value)}
+              className={`flex-1 rounded-lg border px-4 py-3 text-left transition-colors ${
+                imageGenerator === g.value
+                  ? "border-emerald-500 bg-emerald-500/10 text-white"
+                  : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-500"
+              }`}
+            >
+              <div className="text-sm font-medium">{g.label}</div>
+              <div className="text-xs mt-1 opacity-70">{g.desc}</div>
             </button>
           ))}
         </div>

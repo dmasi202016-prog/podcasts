@@ -89,7 +89,12 @@ def compose_scene_clip(
             )
 
         # Top banner — trend summary in dark yellow
-        top_font_size = max(22, top_h // 5)
+        # Dynamic font size: shrink so full text fits within 2 lines.
+        # Korean full-width chars ≈ font_size px each; 2 lines = 2*(avail_w/font_size) chars.
+        _avail_banner_w = width - 80
+        _text_chars = max(len(trend_summary), 1)
+        _max_for_2_lines = int(2 * _avail_banner_w / _text_chars)
+        top_font_size = max(16, min(_max_for_2_lines, top_h // 3))
         trend_clip = (
             TextClip(
                 text=trend_summary,
@@ -97,15 +102,15 @@ def compose_scene_clip(
                 font_size=top_font_size,
                 color=(210, 180, 40),  # dark yellow
                 method="caption",
-                size=(width - 60, top_h - 16),
+                size=(_avail_banner_w, top_h - 12),
                 text_align="center",
             )
-            .with_position(("center", 8))
+            .with_position(((width - _avail_banner_w) // 2, 6))
             .with_duration(scene_duration)
         )
 
         # Bottom banner — fixed tagline in white
-        bot_font_size = max(20, bot_h // 5)
+        bot_font_size = max(18, bot_h // 5)
         tagline_clip = (
             TextClip(
                 text=_BOTTOM_TAGLINE,
@@ -113,10 +118,10 @@ def compose_scene_clip(
                 font_size=bot_font_size,
                 color=(255, 255, 255),  # white
                 method="caption",
-                size=(width - 60, bot_h - 16),
+                size=(_avail_banner_w, bot_h - 12),
                 text_align="center",
             )
-            .with_position(("center", height - bot_h + 8))
+            .with_position(((width - _avail_banner_w) // 2, height - bot_h + 6))
             .with_duration(scene_duration)
         )
 
@@ -152,19 +157,26 @@ def compose_scene_clip(
         if sub_end <= sub_start:
             continue
 
+        # Dynamic caption font size: shrink for long subtitles so nothing is cut off.
+        # Korean chars ≈ font_size px wide; cap at 2 lines within caption box.
+        _cap_avail_w = width - 160  # generous side padding to prevent edge cut-off
+        _cap_chars = max(len(sub.text), 1)
+        _cap_max_font = int(2 * _cap_avail_w / _cap_chars)
+        _cap_font_size = max(22, min(_cap_max_font, 44))
+
         txt = (
             TextClip(
                 text=sub.text,
                 font=_KOREAN_FONT_BOLD,
-                font_size=44,
+                font_size=_cap_font_size,
                 color="white",
                 stroke_color="black",
-                stroke_width=3,
+                stroke_width=max(2, _cap_font_size // 15),
                 method="caption",
-                size=(width - 80, None),
+                size=(_cap_avail_w, None),
                 text_align="center",
             )
-            .with_position(("center", height - caption_margin_bottom))
+            .with_position(((width - _cap_avail_w) // 2, height - caption_margin_bottom))
             .with_start(sub_start)
             .with_duration(sub_end - sub_start)
         )

@@ -89,9 +89,13 @@ def _scene_type(scene_id: str) -> str:
     return "default"
 
 
-async def _generate_image(prompt: str, output_path: str, scene_type: str = "default") -> str:
-    """Dispatch image generation to Ideogram or DALL-E based on settings."""
-    if settings.image_generator == "ideogram":
+async def _generate_image(prompt: str, output_path: str, scene_type: str = "default", generator: str = "dalle") -> str:
+    """Dispatch image generation to Ideogram or DALL-E.
+
+    *generator*: "ideogram" | "dalle" (falls back to settings.image_generator if empty).
+    """
+    use = generator or settings.image_generator
+    if use == "ideogram":
         return await ideogram_generate(prompt, output_path, scene_type=scene_type)
     return await dalle_generate(prompt, output_path, scene_type=scene_type)
 
@@ -102,6 +106,7 @@ async def _generate_scene_assets(
     output_dir: Path,
     generate_video: bool = False,
     selected_speakers: dict | None = None,
+    generator: str = "dalle",
 ) -> tuple[AudioSegment, ImageAsset, VideoClip]:
     """Generate audio and image for a single scene.
 
@@ -162,6 +167,7 @@ async def _generate_scene_assets(
                 prompt=scene["image_prompt"],
                 output_path=image_path,
                 scene_type=stype,
+                generator=generator,
             ),
         ]
         results = await asyncio.gather(*tasks)
@@ -202,6 +208,7 @@ async def _use_manual_audio(
     audio_files: dict[str, str],
     output_dir: Path,
     selected_speakers: dict | None = None,
+    generator: str = "dalle",
 ) -> tuple[AudioSegment, ImageAsset, VideoClip]:
     """Use manually recorded audio file for a scene, still generate images.
 
@@ -239,6 +246,7 @@ async def _use_manual_audio(
             prompt=scene["image_prompt"],
             output_path=image_path,
             scene_type=stype,
+            generator=generator,
         )
 
     # Measure actual audio duration
@@ -452,6 +460,8 @@ async def media_producer(state: PipelineState) -> dict:
         # ── Check audio source (TTS vs manual) ───────────────────────
         audio_source = state.get("audio_source", "tts")
 
+        img_gen = state.get("image_generator") or settings.image_generator
+
         if audio_source == "manual":
             # Manual recording mode: copy user-provided audio files, generate images
             results = await asyncio.gather(
@@ -459,6 +469,7 @@ async def media_producer(state: PipelineState) -> dict:
                     _use_manual_audio(
                         scene, state.get("audio_files", {}), output_dir,
                         selected_speakers=selected_speakers,
+                        generator=img_gen,
                     )
                     for scene in scenes
                 ],
@@ -473,6 +484,7 @@ async def media_producer(state: PipelineState) -> dict:
                         scene, voice_ids, output_dir,
                         generate_video=False,
                         selected_speakers=selected_speakers,
+                        generator=img_gen,
                     )
                     for scene in scenes
                 ],
