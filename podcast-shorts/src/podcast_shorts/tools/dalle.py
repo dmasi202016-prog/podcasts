@@ -48,8 +48,8 @@ async def dalle_generate(
     # Standard prefixes: no text, cat for people, portrait orientation
     full_prompt = (
         "No text, no letters, no words, no typography visible in the image. "
-        "IMPORTANT: Replace ALL humans, people, persons, faces, and human figures with cute cartoon cat characters. "
-        "No real human beings should appear anywhere in the image. Use cartoon cats instead. "
+        "Art style: colorful anime illustration, vibrant cel-shading, smooth clean lines. "
+        "All human characters must be drawn in anime/animation style — no photorealistic people. "
         f"Portrait orientation, vertical format, do not generate landscape. {prompt}"
     )
 

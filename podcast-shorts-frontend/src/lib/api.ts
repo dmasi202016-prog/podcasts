@@ -26,6 +26,7 @@ export async function startPipeline(
   categories: string[],
   resolution: string = "720x1280",
   imageGenerator: string = "dalle",
+  hookMode: string = "video",
 ): Promise<PipelineStartResponse> {
   return fetchJSON<PipelineStartResponse>(`${API_BASE}/start`, {
     method: "POST",
@@ -35,6 +36,7 @@ export async function startPipeline(
       user_preferences: { interest_categories: categories },
       resolution,
       image_generator: imageGenerator,
+      hook_mode: hookMode,
     }),
   });
 }

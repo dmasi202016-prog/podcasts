@@ -34,11 +34,17 @@ const IMAGE_GENERATORS = [
   { value: "ideogram", label: "Ideogram V2", desc: "4:5 비율 지원, 텍스트 없는 이미지" },
 ];
 
+const HOOK_MODES = [
+  { value: "video", label: "AI 영상 (Luma)", desc: "Luma Dream Machine · 5~9초 동영상" },
+  { value: "image", label: "정적 이미지", desc: "DALL-E / Ideogram · 빠른 생성" },
+];
+
 export function Step1Category() {
   const { state, startPipeline } = usePipeline();
   const [selected, setSelected] = useState<string[]>([]);
   const [resolution, setResolution] = useState("720x1280");
   const [imageGenerator, setImageGenerator] = useState("dalle");
+  const [hookMode, setHookMode] = useState("video");
   const [starting, setStarting] = useState(false);
 
   const toggle = (id: string) => {
@@ -50,7 +56,7 @@ export function Step1Category() {
   const handleStart = async () => {
     if (selected.length === 0) return;
     setStarting(true);
-    await startPipeline(selected, resolution, imageGenerator);
+    await startPipeline(selected, resolution, imageGenerator, hookMode);
   };
 
   if (starting && state.isLoading) {
@@ -108,7 +114,7 @@ export function Step1Category() {
         </div>
       </div>
 
-      <div className="mb-8">
+      <div className="mb-6">
         <h3 className="text-sm font-medium text-zinc-300 mb-3">이미지 생성기</h3>
         <div className="flex gap-3">
           {IMAGE_GENERATORS.map((g) => (
@@ -123,6 +129,26 @@ export function Step1Category() {
             >
               <div className="text-sm font-medium">{g.label}</div>
               <div className="text-xs mt-1 opacity-70">{g.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-8">
+        <h3 className="text-sm font-medium text-zinc-300 mb-3">훅(Hook) 장면 방식</h3>
+        <div className="flex gap-3">
+          {HOOK_MODES.map((h) => (
+            <button
+              key={h.value}
+              onClick={() => setHookMode(h.value)}
+              className={`flex-1 rounded-lg border px-4 py-3 text-left transition-colors ${
+                hookMode === h.value
+                  ? "border-amber-500 bg-amber-500/10 text-white"
+                  : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-500"
+              }`}
+            >
+              <div className="text-sm font-medium">{h.label}</div>
+              <div className="text-xs mt-1 opacity-70">{h.desc}</div>
             </button>
           ))}
         </div>
