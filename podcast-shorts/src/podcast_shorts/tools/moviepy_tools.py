@@ -8,6 +8,7 @@ import pysrt
 import structlog
 from moviepy import (
     AudioFileClip,
+    ColorClip,
     CompositeAudioClip,
     CompositeVideoClip,
     ImageClip,
@@ -35,6 +36,7 @@ def compose_scene_clip(
     video_path: str | None = None,
     width: int = 1080,
     height: int = 1920,
+    trend_summary: str | None = None,
 ) -> VideoClip:
     """Build a single scene clip with captions and audio.
 
@@ -53,18 +55,60 @@ def compose_scene_clip(
     scene_duration = audio.duration
 
     # --- Background layer ---
-    if video_path:
-        bg = VideoFileClip(video_path)
-        if bg.duration < scene_duration:
-            loops_needed = int(scene_duration / bg.duration) + 1
-            bg = concatenate_videoclips([bg] * loops_needed)
-        bg = bg.subclipped(0, scene_duration).resized((width, height))
-    else:
-        bg = (
-            ImageClip(image_path)
-            .resized((width, height))
+    if trend_summary:
+        # Body scene: image occupies lower 4:5 area; top band shows trend summary.
+        image_height = int(width * 5 / 4)
+        banner_height = height - image_height  # pixels reserved at top for banner
+
+        # Dark gray full-frame background
+        full_bg = ColorClip(size=(width, height), color=(35, 35, 35)).with_duration(scene_duration)
+
+        # Image/video scaled to 4:5 area, positioned below the banner
+        if video_path:
+            raw = VideoFileClip(video_path)
+            if raw.duration < scene_duration:
+                loops_needed = int(scene_duration / raw.duration) + 1
+                raw = concatenate_videoclips([raw] * loops_needed)
+            raw = raw.subclipped(0, scene_duration).resized((width, image_height)).with_position((0, banner_height))
+        else:
+            raw = (
+                ImageClip(image_path)
+                .resized((width, image_height))
+                .with_duration(scene_duration)
+                .with_position((0, banner_height))
+            )
+
+        # Trend summary text — dark yellow on dark gray banner
+        banner_font_size = max(22, banner_height // 7)
+        trend_clip = (
+            TextClip(
+                text=trend_summary,
+                font=_KOREAN_FONT_BOLD,
+                font_size=banner_font_size,
+                color=(210, 180, 40),   # dark-ish yellow
+                method="caption",
+                size=(width - 60, banner_height - 20),
+                text_align="center",
+            )
+            .with_position(("center", 10))
             .with_duration(scene_duration)
         )
+
+        base_layers: list = [full_bg, raw, trend_clip]
+    else:
+        if video_path:
+            bg = VideoFileClip(video_path)
+            if bg.duration < scene_duration:
+                loops_needed = int(scene_duration / bg.duration) + 1
+                bg = concatenate_videoclips([bg] * loops_needed)
+            bg = bg.subclipped(0, scene_duration).resized((width, height))
+        else:
+            bg = (
+                ImageClip(image_path)
+                .resized((width, height))
+                .with_duration(scene_duration)
+            )
+        base_layers = [bg]
 
     # --- Caption TextClips (bold, bottom-center aligned) ---
     caption_clips = []
@@ -107,7 +151,7 @@ def compose_scene_clip(
 
     # --- Composite ---
     clip = CompositeVideoClip(
-        [bg, *caption_clips],
+        [*base_layers, *caption_clips],
         size=(width, height),
     ).with_audio(audio).with_duration(scene_duration)
 
@@ -165,9 +209,39 @@ def render_final_video(
         duration=final.duration,
     )
 
-    # Clean up
+    # Clean up MoviePy objects before ffmpeg post-processing
     final.close()
     for clip in scene_clips:
         clip.close()
+
+    # --- CRT TV static overlay (post-process via ffmpeg) ---
+    import os as _os
+    import subprocess as _sp
+
+    _crt_tmp = output_path.replace(".mp4", "_precrt.mp4")
+    _os.rename(output_path, _crt_tmp)
+    try:
+        _result = _sp.run(
+            [
+                "ffmpeg", "-y",
+                "-i", _crt_tmp,
+                "-vf", "noise=alls=8:allf=t+u",  # analog static noise
+                "-c:a", "copy",
+                "-preset", "ultrafast",
+                output_path,
+            ],
+            capture_output=True,
+            timeout=300,
+        )
+        if _result.returncode == 0:
+            _os.remove(_crt_tmp)
+            logger.info("render_final_video.crt_applied")
+        else:
+            _os.rename(_crt_tmp, output_path)  # restore on failure
+            logger.warning("render_final_video.crt_failed", stderr=_result.stderr.decode()[-300:])
+    except Exception:
+        logger.exception("render_final_video.crt_error")
+        if _os.path.isfile(_crt_tmp):
+            _os.rename(_crt_tmp, output_path)
 
     return output_path

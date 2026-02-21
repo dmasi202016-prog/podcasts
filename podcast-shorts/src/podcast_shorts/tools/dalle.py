@@ -16,14 +16,15 @@ logger = structlog.get_logger()
 async def dalle_generate(
     prompt: str,
     output_path: str = "/tmp/output.png",
-    size: str = "1024x1792",
+    scene_type: str = "default",
 ) -> str:
     """Generate an image using DALL-E 3 and download it to a local file.
 
     Args:
         prompt: Text prompt for image generation.
         output_path: File path to save the PNG image.
-        size: Image dimensions (default vertical 9:16 ratio).
+        scene_type: "body" → 1024x1024 (fits 4:5 banner area),
+                    others → 1024x1792 (9:16 portrait).
 
     Returns:
         The output_path on success.
@@ -31,20 +32,28 @@ async def dalle_generate(
     Raises:
         RuntimeError: If no image URL is returned or download fails.
     """
+    # DALL-E 3 supported sizes: 1024x1024 | 1024x1792 | 1792x1024
+    size = "1024x1024" if scene_type == "body" else "1024x1792"
+
     logger.info(
         "dalle_generate.start",
         prompt_len=len(prompt),
         size=size,
+        scene_type=scene_type,
     )
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-    # Force portrait/vertical orientation regardless of prompt content
-    portrait_prompt = f"Portrait orientation, vertical 9:16 format, do not generate landscape. {prompt}"
+    # Standard prefixes: no text, cat for people, portrait orientation
+    full_prompt = (
+        "No text, no letters, no words, no typography visible in the image. "
+        "If any human or person must appear, replace with a cute cartoon cat character. "
+        f"Portrait orientation, vertical format, do not generate landscape. {prompt}"
+    )
 
     response = await client.images.generate(
         model="dall-e-3",
-        prompt=portrait_prompt,
+        prompt=full_prompt,
         size=size,
         quality="hd",
         style="vivid",

@@ -22,11 +22,13 @@ from podcast_shorts.graph.state import (
 from langchain_openai import ChatOpenAI
 
 from podcast_shorts.tools.dalle import dalle_generate
+from podcast_shorts.tools.ideogram import ideogram_generate
 from podcast_shorts.tools.elevenlabs import elevenlabs_tts
 
-# Channel ad image used for CTA scene (skip DALL-E for CTA)
+# Static images for CTA scenes
 _ASSETS_DIR = get_assets_dir()
 _CHANNEL_AD_IMAGE = str(_ASSETS_DIR / "channel_ad.png")
+_CHANNEL_CTA_IMAGE = str(_ASSETS_DIR / "channel_cta.png")
 
 logger = structlog.get_logger()
 
@@ -62,21 +64,55 @@ def _get_speaker_pic(speaker: str, selected_speakers: dict | None) -> str | None
 _tts_semaphore = asyncio.Semaphore(2)
 
 
+def _get_static_image(scene_id: str) -> str | None:
+    """Return a pre-made image path for CTA scenes, or None (use AI generator).
+
+    cta_2 → channel_cta.png (channel call-to-action card)
+    cta / cta_1 → channel_ad.png (channel ad card)
+    others → None (generate with DALL-E or Ideogram)
+    """
+    if scene_id == "cta_2":
+        return _CHANNEL_CTA_IMAGE
+    if scene_id.startswith("cta"):
+        return _CHANNEL_AD_IMAGE
+    return None
+
+
+def _scene_type(scene_id: str) -> str:
+    """Map scene_id to a generator scene type key."""
+    if scene_id.startswith("body_"):
+        return "body"
+    if scene_id == "hook":
+        return "hook"
+    if scene_id.startswith("cta"):
+        return "cta"
+    return "default"
+
+
+async def _generate_image(prompt: str, output_path: str, scene_type: str = "default") -> str:
+    """Dispatch image generation to Ideogram or DALL-E based on settings."""
+    if settings.image_generator == "ideogram":
+        return await ideogram_generate(prompt, output_path, scene_type=scene_type)
+    return await dalle_generate(prompt, output_path, scene_type=scene_type)
+
+
 async def _generate_scene_assets(
     scene: Scene,
     voice_ids: dict[str, str],
     output_dir: Path,
     generate_video: bool = False,
-    use_channel_image: bool = False,
     selected_speakers: dict | None = None,
 ) -> tuple[AudioSegment, ImageAsset, VideoClip]:
     """Generate audio and image for a single scene.
 
     *voice_ids*: mapping of speaker → ElevenLabs voice ID.
-    *generate_video*: reserved for future use (currently always False; hook video
-    is generated later in auto_editor after user reviews the prompt).
-    *use_channel_image*: when True, uses channel ad image instead of DALL-E (CTA scene).
+    *generate_video*: reserved for future use.
     *selected_speakers*: used to resolve participant ai_pic images.
+
+    Image priority per scene:
+      1. static_image (cta → channel_ad/channel_cta)
+      2. speaker ai_pic (participants with pre-made photos)
+      3. AI generator (DALL-E or Ideogram based on settings.image_generator)
 
     Returns a tuple of (AudioSegment, ImageAsset, VideoClip) TypedDicts.
     """
@@ -99,18 +135,18 @@ async def _generate_scene_assets(
                 output_path=audio_path,
             )
 
-    # Check if participant has a pre-made ai_pic
+    static_img = _get_static_image(scene_id)
     speaker_pic = _get_speaker_pic(speaker, selected_speakers)
 
-    if use_channel_image:
-        # CTA: use channel ad image, skip DALL-E
-        shutil.copy2(_CHANNEL_AD_IMAGE, image_path)
+    if static_img:
+        # CTA scenes: use pre-made static image (channel_ad or channel_cta)
+        shutil.copy2(static_img, image_path)
         tasks: list = [_tts_with_limit()]
         results = await asyncio.gather(*tasks)
         audio_result = results[0]
         image_result = image_path
     elif speaker_pic:
-        # Participant scene: use ai_pic instead of generating with DALL-E
+        # Participant scene: use ai_pic instead of generating
         shutil.copy2(speaker_pic, image_path)
         tasks = [_tts_with_limit()]
         results = await asyncio.gather(*tasks)
@@ -118,16 +154,17 @@ async def _generate_scene_assets(
         image_result = image_path
         logger.info("scene_assets.using_ai_pic", scene_id=scene_id, speaker=speaker, pic=speaker_pic)
     else:
+        # Host / non-participant: generate with DALL-E or Ideogram
+        stype = _scene_type(scene_id)
         tasks = [
             _tts_with_limit(),
-            dalle_generate(
+            _generate_image(
                 prompt=scene["image_prompt"],
                 output_path=image_path,
+                scene_type=stype,
             ),
         ]
-
         results = await asyncio.gather(*tasks)
-
         audio_result = results[0]
         image_result = results[1]
 
@@ -164,14 +201,14 @@ async def _use_manual_audio(
     scene: Scene,
     audio_files: dict[str, str],
     output_dir: Path,
-    use_channel_image: bool = False,
     selected_speakers: dict | None = None,
 ) -> tuple[AudioSegment, ImageAsset, VideoClip]:
     """Use manually recorded audio file for a scene, still generate images.
 
     *audio_files*: mapping of scene_id → source audio file path.
-    Copies the audio file into the output directory and generates the image.
     *selected_speakers*: used to resolve participant ai_pic images.
+
+    Image priority: static (cta) → ai_pic (participant) → AI generator.
     """
     import shutil
 
@@ -186,19 +223,22 @@ async def _use_manual_audio(
     else:
         raise FileNotFoundError(f"Manual audio file not found for scene {scene_id}: {source_audio}")
 
-    # Generate image (or use channel ad for CTA, or ai_pic for participants)
+    # Image selection: static → ai_pic → AI generator
     speaker = scene.get("speaker", "host")
+    static_img = _get_static_image(scene_id)
     speaker_pic = _get_speaker_pic(speaker, selected_speakers)
 
-    if use_channel_image:
-        shutil.copy2(_CHANNEL_AD_IMAGE, image_path)
+    if static_img:
+        shutil.copy2(static_img, image_path)
     elif speaker_pic:
         shutil.copy2(speaker_pic, image_path)
         logger.info("manual_audio.using_ai_pic", scene_id=scene_id, speaker=speaker, pic=speaker_pic)
     else:
-        await dalle_generate(
+        stype = _scene_type(scene_id)
+        await _generate_image(
             prompt=scene["image_prompt"],
             output_path=image_path,
+            scene_type=stype,
         )
 
     # Measure actual audio duration
@@ -413,12 +453,11 @@ async def media_producer(state: PipelineState) -> dict:
         audio_source = state.get("audio_source", "tts")
 
         if audio_source == "manual":
-            # Manual recording mode: copy user-provided audio files
+            # Manual recording mode: copy user-provided audio files, generate images
             results = await asyncio.gather(
                 *[
                     _use_manual_audio(
                         scene, state.get("audio_files", {}), output_dir,
-                        use_channel_image=scene["scene_id"].startswith("cta"),
                         selected_speakers=selected_speakers,
                     )
                     for scene in scenes
@@ -426,15 +465,13 @@ async def media_producer(state: PipelineState) -> dict:
                 return_exceptions=True,
             )
         else:
-            # TTS mode: generate audio via ElevenLabs
-            # Hook video is now generated later (after user reviews the prompt).
-            # CTA scene → channel ad image; participant scenes → ai_pic; others → DALL-E.
+            # TTS mode: generate audio via ElevenLabs + images via AI generator
+            # Image priority: static (cta/cta_2) → ai_pic (participant) → DALL-E/Ideogram
             results = await asyncio.gather(
                 *[
                     _generate_scene_assets(
                         scene, voice_ids, output_dir,
                         generate_video=False,
-                        use_channel_image=scene["scene_id"].startswith("cta"),
                         selected_speakers=selected_speakers,
                     )
                     for scene in scenes

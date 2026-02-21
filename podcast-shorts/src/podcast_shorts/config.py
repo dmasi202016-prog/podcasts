@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # Media Generation
     elevenlabs_api_key: str = ""
     luma_api_key: str = ""
+    ideogram_api_key: str = ""
+
+    # Image generator: "dalle" | "ideogram"
+    image_generator: str = "dalle"
 
     # ElevenLabs Voice IDs per family member
     voice_id_me: str = ""

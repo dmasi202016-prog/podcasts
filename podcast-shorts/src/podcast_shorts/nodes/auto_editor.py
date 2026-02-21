@@ -224,6 +224,14 @@ async def auto_editor(state: PipelineState) -> dict:
             width, height = (int(x) for x in resolution.split("x"))
         except (ValueError, AttributeError):
             width, height = 720, 1280
+
+        # One-line trend summary shown in the dark banner above body-scene images
+        _raw_topic = (
+            trend_data.get("selected_topic")
+            or state.get("topic_selected", "")
+        )
+        trend_summary_text = (_raw_topic[:55] + "…") if len(_raw_topic) > 55 else _raw_topic
+
         clips = []
         # srt_cursor: position in Whisper SRT timeline (full_audio, no intro)
         # video_cursor: position in final video timeline (includes intro)
@@ -252,6 +260,9 @@ async def auto_editor(state: PipelineState) -> dict:
                 logger.warning("auto_editor.missing_image", scene_id=scene_id)
                 continue
 
+            # Body scenes get the dark trend-summary banner at top (4:5 image area)
+            is_body = scene_id.startswith("body_")
+
             # Pass srt_cursor so captions align with Whisper SRT timestamps
             clip = compose_scene_clip(
                 audio_path=audio_path,
@@ -261,6 +272,7 @@ async def auto_editor(state: PipelineState) -> dict:
                 video_path=vid_path,
                 width=width,
                 height=height,
+                trend_summary=trend_summary_text if is_body else None,
             )
             clips.append(clip)
             srt_cursor += seg["duration"]
