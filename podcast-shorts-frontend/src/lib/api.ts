@@ -27,12 +27,13 @@ export async function startPipeline(
   resolution: string = "720x1280",
   imageGenerator: string = "dalle",
   hookMode: string = "video",
+  keywords: string[] = [],
 ): Promise<PipelineStartResponse> {
   return fetchJSON<PipelineStartResponse>(`${API_BASE}/start`, {
     method: "POST",
     body: JSON.stringify({
       user_id: userId,
-      keywords: [],
+      keywords,
       user_preferences: { interest_categories: categories },
       resolution,
       image_generator: imageGenerator,

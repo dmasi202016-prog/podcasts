@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Monitor, Film, Users, TrendingUp, Trophy,
   Landmark, Palette, Atom, Heart, GraduationCap,
+  Search, Tag,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -39,9 +40,19 @@ const HOOK_MODES = [
   { value: "image", label: "정적 이미지", desc: "DALL-E / Ideogram · 빠른 생성" },
 ];
 
+type InputMode = "category" | "topic";
+
 export function Step1Category() {
   const { state, startPipeline } = usePipeline();
+  const [inputMode, setInputMode] = useState<InputMode>("category");
+
+  // 카테고리 모드
   const [selected, setSelected] = useState<string[]>([]);
+
+  // 주제 직접 입력 모드
+  const [topicInput, setTopicInput] = useState("");
+
+  // 공통 설정
   const [resolution, setResolution] = useState("720x1280");
   const [imageGenerator, setImageGenerator] = useState("dalle");
   const [hookMode, setHookMode] = useState("video");
@@ -53,10 +64,18 @@ export function Step1Category() {
     );
   };
 
+  const isStartable =
+    inputMode === "category" ? selected.length > 0 : topicInput.trim().length > 0;
+
   const handleStart = async () => {
-    if (selected.length === 0) return;
+    if (!isStartable) return;
     setStarting(true);
-    await startPipeline(selected, resolution, imageGenerator, hookMode);
+    if (inputMode === "category") {
+      await startPipeline(selected, resolution, imageGenerator, hookMode, []);
+    } else {
+      const topic = topicInput.trim();
+      await startPipeline([], resolution, imageGenerator, hookMode, [topic]);
+    }
   };
 
   if (starting && state.isLoading) {
@@ -72,28 +91,86 @@ export function Step1Category() {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-2">관심 카테고리를 선택하세요</h2>
-      <p className="text-zinc-400 text-sm mb-6">
-        여러 개를 선택할 수 있습니다. 선택한 카테고리에서 트렌드를 분석합니다.
-      </p>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-8">
-        {CATEGORIES.map((cat) => (
-          <Card
-            key={cat.id}
-            selected={selected.includes(cat.id)}
-            hoverable
-            onClick={() => toggle(cat.id)}
-            className="flex flex-col items-center gap-2 py-6"
-          >
-            <div className={selected.includes(cat.id) ? "text-violet-400" : "text-zinc-400"}>
-              {ICON_MAP[cat.icon]}
-            </div>
-            <span className="text-sm font-medium">{cat.label}</span>
-          </Card>
-        ))}
+      {/* 모드 탭 */}
+      <div className="flex gap-1 mb-6 bg-zinc-800/60 rounded-xl p-1 w-fit">
+        <button
+          onClick={() => setInputMode("category")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            inputMode === "category"
+              ? "bg-violet-600 text-white shadow"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <Tag size={15} />
+          카테고리로 찾기
+        </button>
+        <button
+          onClick={() => setInputMode("topic")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            inputMode === "topic"
+              ? "bg-violet-600 text-white shadow"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <Search size={15} />
+          주제 직접 입력
+        </button>
       </div>
 
+      {/* 카테고리 모드 */}
+      {inputMode === "category" && (
+        <>
+          <h2 className="text-xl font-semibold mb-2">관심 카테고리를 선택하세요</h2>
+          <p className="text-zinc-400 text-sm mb-6">
+            여러 개를 선택할 수 있습니다. 선택한 카테고리에서 트렌드를 분석합니다.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-8">
+            {CATEGORIES.map((cat) => (
+              <Card
+                key={cat.id}
+                selected={selected.includes(cat.id)}
+                hoverable
+                onClick={() => toggle(cat.id)}
+                className="flex flex-col items-center gap-2 py-6"
+              >
+                <div className={selected.includes(cat.id) ? "text-violet-400" : "text-zinc-400"}>
+                  {ICON_MAP[cat.icon]}
+                </div>
+                <span className="text-sm font-medium">{cat.label}</span>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* 주제 직접 입력 모드 */}
+      {inputMode === "topic" && (
+        <>
+          <h2 className="text-xl font-semibold mb-2">원하는 주제를 입력하세요</h2>
+          <p className="text-zinc-400 text-sm mb-6">
+            키워드나 주제를 입력하면 최신 트렌드와 뉴스를 검색해 대본을 만들어드립니다.
+          </p>
+          <div className="mb-8">
+            <div className="relative">
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+              <input
+                type="text"
+                value={topicInput}
+                onChange={(e) => setTopicInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && isStartable && handleStart()}
+                placeholder="예: 비트코인, 최신 AI 트렌드, 2025 주식 전망..."
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl pl-11 pr-4 py-4 text-white placeholder-zinc-500 text-sm focus:outline-none focus:border-violet-500 transition-colors"
+                autoFocus
+              />
+            </div>
+            <p className="text-xs text-zinc-500 mt-2 ml-1">
+              Enter를 누르거나 아래 버튼을 클릭해 시작하세요.
+            </p>
+          </div>
+        </>
+      )}
+
+      {/* 공통 설정 */}
       <div className="mb-6">
         <h3 className="text-sm font-medium text-zinc-300 mb-3">영상 해상도</h3>
         <div className="flex gap-3">
@@ -155,12 +232,10 @@ export function Step1Category() {
       </div>
 
       <div className="flex justify-center">
-        <Button
-          size="lg"
-          disabled={selected.length === 0}
-          onClick={handleStart}
-        >
-          트렌드 분석 시작 ({selected.length}개 선택)
+        <Button size="lg" disabled={!isStartable} onClick={handleStart}>
+          {inputMode === "category"
+            ? `트렌드 분석 시작 (${selected.length}개 선택)`
+            : "주제로 대본 만들기"}
         </Button>
       </div>
     </div>
