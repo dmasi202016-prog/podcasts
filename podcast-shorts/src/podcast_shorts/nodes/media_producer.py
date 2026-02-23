@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import random
 from pathlib import Path
 
 import structlog
@@ -33,26 +34,61 @@ _CHANNEL_CTA_IMAGE = str(_ASSETS_DIR / "channel_cta.png")
 logger = structlog.get_logger()
 
 
-def _get_speaker_pic(speaker: str, selected_speakers: dict | None) -> str | None:
-    """Return the ai_pic path for a participant speaker, or None for host/missing.
+def _get_speaker_pics(family_key: str) -> list[str]:
+    """Return all available ai_pic paths for a family member.
 
-    Maps participant_N → family member key via selected_speakers, then checks
-    if assets/ai_pic/{key}.png exists.
+    Supports two layouts:
+    - ai_pic/{family_key}/   → directory: returns all image files inside (shuffled)
+    - ai_pic/{family_key}.png → single file (legacy fallback)
     """
-    if not speaker or speaker == "host" or not selected_speakers:
-        return None
-    if not speaker.startswith("participant_"):
-        return None
-    try:
-        idx = int(speaker.split("_")[1]) - 1  # participant_1 → index 0
-    except (IndexError, ValueError):
-        return None
+    pic_dir = _ASSETS_DIR / "ai_pic" / family_key
+    if pic_dir.is_dir():
+        pics = [
+            str(p) for p in sorted(pic_dir.iterdir())
+            if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"} and p.is_file()
+        ]
+        if pics:
+            return pics
+    single = _ASSETS_DIR / "ai_pic" / f"{family_key}.png"
+    if single.is_file():
+        return [str(single)]
+    return []
+
+
+def _assign_speaker_pics(scenes: list[Scene], selected_speakers: dict | None) -> dict[str, str]:
+    """Pre-assign a unique (non-repeating within video) ai_pic to each scene.
+
+    For each participant speaker, shuffles their available photos and assigns
+    them round-robin across all scenes that speaker appears in.
+
+    Returns: scene_id → pic_path  (only for scenes that use ai_pic)
+    """
+    if not selected_speakers:
+        return {}
+
     participants = selected_speakers.get("participants", [])
-    if idx < 0 or idx >= len(participants):
-        return None
-    family_key = participants[idx]
-    pic_path = _ASSETS_DIR / "ai_pic" / f"{family_key}.png"
-    return str(pic_path) if pic_path.is_file() else None
+
+    # Build shuffled pic list per role key (participant_1, participant_2, ...)
+    role_pics: dict[str, list[str]] = {}
+    for i, p_key in enumerate(participants, 1):
+        pics = _get_speaker_pics(p_key)
+        if pics:
+            shuffled = pics.copy()
+            random.shuffle(shuffled)
+            role_pics[f"participant_{i}"] = shuffled
+
+    # Assign round-robin per speaker
+    usage: dict[str, int] = {role: 0 for role in role_pics}
+    scene_pic_map: dict[str, str] = {}
+
+    for scene in scenes:
+        speaker = scene.get("speaker", "")
+        if speaker in role_pics:
+            pics = role_pics[speaker]
+            scene_pic_map[scene["scene_id"]] = pics[usage[speaker] % len(pics)]
+            usage[speaker] += 1
+
+    return scene_pic_map
 
 
 # ---------------------------------------------------------------------------
@@ -105,18 +141,18 @@ async def _generate_scene_assets(
     voice_ids: dict[str, str],
     output_dir: Path,
     generate_video: bool = False,
-    selected_speakers: dict | None = None,
+    scene_pic_map: dict[str, str] | None = None,
     generator: str = "dalle",
 ) -> tuple[AudioSegment, ImageAsset, VideoClip]:
     """Generate audio and image for a single scene.
 
     *voice_ids*: mapping of speaker → ElevenLabs voice ID.
     *generate_video*: reserved for future use.
-    *selected_speakers*: used to resolve participant ai_pic images.
+    *scene_pic_map*: pre-assigned {scene_id: pic_path} for participant scenes.
 
     Image priority per scene:
       1. static_image (cta → channel_ad/channel_cta)
-      2. speaker ai_pic (participants with pre-made photos)
+      2. scene_pic_map entry (pre-assigned unique ai_pic per participant scene)
       3. AI generator (DALL-E or Ideogram based on settings.image_generator)
 
     Returns a tuple of (AudioSegment, ImageAsset, VideoClip) TypedDicts.
@@ -141,7 +177,7 @@ async def _generate_scene_assets(
             )
 
     static_img = _get_static_image(scene_id)
-    speaker_pic = _get_speaker_pic(speaker, selected_speakers)
+    speaker_pic = (scene_pic_map or {}).get(scene_id)
 
     if static_img:
         # CTA scenes: use pre-made static image (channel_ad or channel_cta)
@@ -151,7 +187,7 @@ async def _generate_scene_assets(
         audio_result = results[0]
         image_result = image_path
     elif speaker_pic:
-        # Participant scene: use ai_pic instead of generating
+        # Participant scene: use pre-assigned ai_pic (unique per scene)
         shutil.copy2(speaker_pic, image_path)
         tasks = [_tts_with_limit()]
         results = await asyncio.gather(*tasks)
@@ -207,13 +243,13 @@ async def _use_manual_audio(
     scene: Scene,
     audio_files: dict[str, str],
     output_dir: Path,
-    selected_speakers: dict | None = None,
+    scene_pic_map: dict[str, str] | None = None,
     generator: str = "dalle",
 ) -> tuple[AudioSegment, ImageAsset, VideoClip]:
     """Use manually recorded audio file for a scene, still generate images.
 
     *audio_files*: mapping of scene_id → source audio file path.
-    *selected_speakers*: used to resolve participant ai_pic images.
+    *scene_pic_map*: pre-assigned {scene_id: pic_path} for participant scenes.
 
     Image priority: static (cta) → ai_pic (participant) → AI generator.
     """
@@ -233,7 +269,7 @@ async def _use_manual_audio(
     # Image selection: static → ai_pic → AI generator
     speaker = scene.get("speaker", "host")
     static_img = _get_static_image(scene_id)
-    speaker_pic = _get_speaker_pic(speaker, selected_speakers)
+    speaker_pic = (scene_pic_map or {}).get(scene_id)
 
     if static_img:
         shutil.copy2(static_img, image_path)
@@ -377,18 +413,25 @@ async def _generate_hook_video_prompt(script_data: dict) -> str:
     )
 
     system_msg = (
-        "You are a video prompt engineer. Given a podcast script, generate a single "
-        "concise English prompt for Luma Dream Machine to create a short hook video. "
-        "The prompt should visually represent the core topic and mood of the script. "
-        "Output ONLY the prompt text, nothing else."
+        "You are an expert Luma Dream Machine prompt engineer specializing in photorealistic, "
+        "cinematic short-form vertical videos. Your prompts must follow these rules:\n\n"
+        "1. Always specify a CAMERA MOVEMENT: e.g. 'slow dolly in', 'cinematic pan', "
+        "'aerial tilt down', 'handheld tracking shot', 'slow zoom out'.\n"
+        "2. Always specify LIGHTING: e.g. 'golden hour sunlight', 'dramatic studio lighting', "
+        "'neon-lit night scene', 'soft morning light'.\n"
+        "3. Add QUALITY TAGS at the end: 'photorealistic, 8K, HDR, cinematic depth of field, "
+        "ultra-detailed, sharp focus'.\n"
+        "4. Keep it ONE dense sentence of 40-80 words. No line breaks.\n"
+        "5. Make the scene visually DYNAMIC and directly related to the topic.\n"
+        "6. Output ONLY the prompt text — no explanation, no quotes, no prefix."
     )
     user_msg = (
-        f"Script title: {title}\n"
-        f"Hook text: {hook}\n"
-        f"Full script summary: {full_script[:500]}\n\n"
-        "Generate a visually compelling video prompt (in English) that captures "
-        "the essence of this podcast topic. The video should be vertical (9:16 aspect ratio). "
-        "Include the topic's key visual elements."
+        f"Podcast title: {title}\n"
+        f"Hook: {hook}\n"
+        f"Topic summary: {full_script[:400]}\n\n"
+        "Write a single Luma Dream Machine video prompt that creates a stunning, "
+        "photorealistic 9:16 vertical video representing this podcast topic. "
+        "Include camera movement, lighting, and quality tags."
     )
 
     response = await llm.ainvoke([
@@ -397,7 +440,7 @@ async def _generate_hook_video_prompt(script_data: dict) -> str:
     ])
 
     prompt = response.content.strip()
-    logger.info("hook_video_prompt.generated", prompt_len=len(prompt))
+    logger.info("hook_video_prompt.generated", prompt_len=len(prompt), prompt=prompt)
     return prompt
 
 
@@ -462,13 +505,17 @@ async def media_producer(state: PipelineState) -> dict:
 
         img_gen = state.get("image_generator") or settings.image_generator
 
+        # Pre-assign unique ai_pic per scene (shuffled, non-repeating per speaker)
+        scene_pic_map = _assign_speaker_pics(scenes, selected_speakers)
+        logger.info("media_producer.speaker_pics_assigned", assignments=len(scene_pic_map))
+
         if audio_source == "manual":
             # Manual recording mode: copy user-provided audio files, generate images
             results = await asyncio.gather(
                 *[
                     _use_manual_audio(
                         scene, state.get("audio_files", {}), output_dir,
-                        selected_speakers=selected_speakers,
+                        scene_pic_map=scene_pic_map,
                         generator=img_gen,
                     )
                     for scene in scenes
@@ -483,7 +530,7 @@ async def media_producer(state: PipelineState) -> dict:
                     _generate_scene_assets(
                         scene, voice_ids, output_dir,
                         generate_video=False,
-                        selected_speakers=selected_speakers,
+                        scene_pic_map=scene_pic_map,
                         generator=img_gen,
                     )
                     for scene in scenes

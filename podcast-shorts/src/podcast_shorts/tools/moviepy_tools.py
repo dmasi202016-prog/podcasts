@@ -21,6 +21,25 @@ from moviepy.audio.fx import MultiplyVolume
 
 logger = structlog.get_logger()
 
+# ---------------------------------------------------------------------------
+# Monkey-patch: MoviePy 2.x bug — FFMPEG_AudioReader.__del__ calls close()
+# before __init__ finishes (proc not yet set), causing noisy AttributeError
+# logs. Safe-guard the close() method to handle missing attributes.
+# ---------------------------------------------------------------------------
+try:
+    from moviepy.audio.io.readers import FFMPEG_AudioReader as _FAR
+    _orig_close = _FAR.close
+
+    def _safe_close(self):
+        try:
+            _orig_close(self)
+        except AttributeError:
+            pass
+
+    _FAR.close = _safe_close
+except Exception:
+    pass
+
 # Korean bold font (extracted ExtraBold from AppleSDGothicNeo.ttc)
 from podcast_shorts.config import get_assets_dir
 

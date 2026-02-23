@@ -20,7 +20,6 @@ from podcast_shorts.graph.state import (
 from podcast_shorts.tools.elevenlabs import elevenlabs_tts
 from podcast_shorts.tools.luma import luma_video_generate
 from podcast_shorts.tools.moviepy_tools import compose_scene_clip, render_final_video
-from podcast_shorts.tools.whisper import whisper_transcribe
 
 # Channel intro assets
 _ASSETS_DIR = get_assets_dir()
@@ -35,42 +34,89 @@ logger = structlog.get_logger()
 # ---------------------------------------------------------------------------
 
 
-def _distribute_captions(
-    srt_path: str,
-    audio_segments: list[AudioSegment],
-) -> list[list[pysrt.SubRipItem]]:
-    """Split SRT captions into per-scene buckets based on audio segment timing.
+def _split_text(text: str, max_chars: int = 22) -> list[str]:
+    """Split text into caption chunks of at most max_chars characters.
 
-    Returns a list (one entry per scene) of ``SubRipItem`` lists.
+    Tries to break at natural Korean/punctuation boundaries.
     """
-    subs = pysrt.open(srt_path, encoding="utf-8")
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
 
-    # Compute each scene's absolute time window
-    scene_windows: list[tuple[float, float]] = []
-    cursor = 0.0
-    for seg in audio_segments:
-        end = cursor + seg["duration"]
-        scene_windows.append((cursor, end))
-        cursor = end
-
-    buckets: list[list[pysrt.SubRipItem]] = [[] for _ in audio_segments]
-
-    for sub in subs:
-        sub_mid = (sub.start.ordinal + sub.end.ordinal) / 2000.0
-        for i, (win_start, win_end) in enumerate(scene_windows):
-            if win_start <= sub_mid < win_end:
-                buckets[i].append(sub)
+    chunks: list[str] = []
+    while text:
+        if len(text) <= max_chars:
+            chunks.append(text)
+            break
+        # Try to split at punctuation or space near the limit
+        split_at = max_chars
+        for punct in [" ", ",", ".", "?", "!", "。", "，", "？", "！", "~"]:
+            pos = text.rfind(punct, max_chars // 2, max_chars + 1)
+            if pos > 0:
+                split_at = pos + 1
                 break
+        chunks.append(text[:split_at].strip())
+        text = text[split_at:].strip()
 
-    # Extend the last caption in each scene to reach the scene boundary
-    for i, (win_start, win_end) in enumerate(scene_windows):
-        if buckets[i]:
-            last_sub = buckets[i][-1]
-            last_sub_end = last_sub.end.ordinal / 1000.0
-            if win_end - last_sub_end < 1.0:  # within 1 second of scene end
-                last_sub.end = pysrt.SubRipTime.from_ordinal(int(win_end * 1000))
+    return [c for c in chunks if c]
 
-    return buckets
+
+def _generate_captions_from_script(
+    scenes: list,
+    audio_segments: list[AudioSegment],
+    srt_path: str,
+    max_chars: int = 22,
+) -> list[list[pysrt.SubRipItem]]:
+    """Generate SRT captions directly from script text + audio segment timing.
+
+    Each scene's text is split into short chunks and distributed evenly
+    across its audio duration. Returns per-scene caption buckets.
+    Writes the full SRT file to *srt_path*.
+    """
+    scene_text_map = {s["scene_id"]: s.get("text", "") for s in scenes}
+
+    all_subs: list[pysrt.SubRipItem] = []
+    scene_buckets: list[list[pysrt.SubRipItem]] = []
+    sub_index = 1
+    cursor = 0.0  # absolute timeline position in seconds
+
+    for seg in audio_segments:
+        scene_id = seg["scene_id"]
+        duration = seg["duration"]
+        text = scene_text_map.get(scene_id, "")
+        chunks = _split_text(text, max_chars)
+
+        scene_subs: list[pysrt.SubRipItem] = []
+        if chunks:
+            chunk_dur = duration / len(chunks)
+            for j, chunk in enumerate(chunks):
+                start_ms = int((cursor + j * chunk_dur) * 1000)
+                end_ms = int((cursor + (j + 1) * chunk_dur) * 1000)
+                sub = pysrt.SubRipItem(
+                    index=sub_index,
+                    start=pysrt.SubRipTime.from_ordinal(start_ms),
+                    end=pysrt.SubRipTime.from_ordinal(end_ms),
+                    text=chunk,
+                )
+                scene_subs.append(sub)
+                all_subs.append(sub)
+                sub_index += 1
+
+        scene_buckets.append(scene_subs)
+        cursor += duration
+
+    srt_file = pysrt.SubRipFile(items=all_subs)
+    srt_file.save(srt_path, encoding="utf-8")
+
+    logger.info(
+        "captions_from_script.done",
+        srt_path=srt_path,
+        total_subs=len(all_subs),
+        scenes=len(audio_segments),
+    )
+    return scene_buckets
 
 
 def _generate_metadata(
@@ -175,11 +221,9 @@ async def auto_editor(state: PipelineState) -> dict:
         srt_path = str(output_dir / f"{run_id}_captions.srt")
         thumbnail_path = str(output_dir / f"{run_id}_thumbnail.png")
 
-        # ── Step 1: Whisper transcription → SRT ──────────────────────
-        await whisper_transcribe(full_audio, srt_path)
-
-        # ── Step 2: Distribute captions to scenes ────────────────────
-        scene_captions = _distribute_captions(srt_path, audio_segments)
+        # ── Step 1: Generate SRT captions from script text + audio timing ──
+        scenes = (state.get("script_data") or {}).get("scenes", [])
+        scene_captions = _generate_captions_from_script(scenes, audio_segments, srt_path)
 
         # ── Step 3: Generate channel intro TTS ─────────────────────
         intro_audio_path = str(output_dir / "channel_intro.mp3")
