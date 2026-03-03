@@ -45,7 +45,10 @@
       "Bash(kill:*)",
       "Bash(npx tsc:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebFetch(domain:context7.com)",
+      "Bash(claude mcp add --scope user context7 -- npx -y @upstash/context7-mcp 2>&1)",
+      "Bash(claude mcp list 2>&1)"
     ]
   }
 }
