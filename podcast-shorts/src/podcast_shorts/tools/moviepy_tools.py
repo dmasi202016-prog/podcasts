@@ -136,7 +136,7 @@ def compose_scene_clip(
                 size=(_avail_banner_w, top_h - 12),
                 text_align="center",
             )
-            .with_position(((width - _avail_banner_w) // 2, 6))
+            .with_position(((width - _avail_banner_w) // 2, top_font_size * 2))
             .with_duration(scene_duration)
         )
 
@@ -194,7 +194,7 @@ def compose_scene_clip(
         _cap_avail_w = width - 160  # generous side padding to prevent edge cut-off
         _cap_chars = max(len(sub.text), 1)
         _cap_max_font = int(2 * _cap_avail_w / _cap_chars)
-        _cap_font_size = max(22, min(_cap_max_font, 44))
+        _cap_font_size = max(18, min(_cap_max_font, 34))
 
         txt = (
             TextClip(
