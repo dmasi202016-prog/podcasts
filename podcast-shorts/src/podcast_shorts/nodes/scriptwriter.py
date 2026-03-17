@@ -52,7 +52,8 @@ SCRIPT_SYSTEM_PROMPT_TEMPLATE = """\
      예: 주제가 "AI 기술"이면 모든 이미지에 AI/기술 관련 시각 요소를 포함.
    - 스크립트 대사 내용과 직접적으로 관련된 장면을 묘사하세요.
    - 인물이 등장하는 장면은 **애니메이션/일러스트 스타일**로 묘사하세요.
-     예: "anime-style family watching news together" / "colorful animated characters discussing technology"
+   - **인물 나이 규칙**: 특정 실존 인물을 묘사하는 경우가 아니라면, 등장 인물은 반드시 **중년(40-50대)** 으로 묘사하세요.
+     예: "anime-style middle-aged family watching news together" / "colorful animated middle-aged characters discussing technology"
 5. 전체 분량: 60-180초 (1-3분).
 
 ## 장면 구성 (중요!)
@@ -167,6 +168,7 @@ SCRIPT_USER_PROMPT = """\
 - 주제 "{selected_topic}"를 모든 image_prompt에 시각적 요소로 포함하세요.
 - 세로 구도(portrait, vertical composition)로 묘사하세요.
 - 인물이 필요한 장면은 **애니메이션/일러스트 스타일** 캐릭터로 묘사하세요.
+- 특정 실존 인물을 묘사하는 경우가 아니라면, 인물은 반드시 **중년(middle-aged, 40-50대)** 으로 묘사하세요.
 
 ## 대본 작성 지침
 - Body 1(아이스브레이킹): 위 최신 뉴스를 바탕으로 "왜 지금 이슈인지"를 쉽고 재미있게 설명하세요.

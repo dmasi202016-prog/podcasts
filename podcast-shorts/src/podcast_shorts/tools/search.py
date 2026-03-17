@@ -39,8 +39,13 @@ class GoogleTrendsResult:
 # ---------------------------------------------------------------------------
 
 
-async def search_tavily_trends() -> list[TavilySearchResult]:
-    """Search Tavily for trending Korean news across two queries in parallel.
+async def search_tavily_trends(
+    categories: list[str] | None = None,
+) -> list[TavilySearchResult]:
+    """Search Tavily for trending Korean news across queries in parallel.
+
+    When *categories* are provided, the search queries are tailored to those
+    categories so results are more relevant to the user's interests.
 
     Returns an empty list on failure (graceful degradation).
     """
@@ -49,7 +54,14 @@ async def search_tavily_trends() -> list[TavilySearchResult]:
         return []
 
     client = AsyncTavilyClient(api_key=settings.tavily_api_key)
-    queries = ["한국 오늘 화제 트렌드", "오늘 인기 뉴스 이슈"]
+
+    if categories:
+        # Build category-specific queries for more relevant results
+        queries = [f"한국 오늘 {cat} 트렌드 뉴스" for cat in categories[:3]]
+        # Always include a general query as fallback
+        queries.append("한국 오늘 화제 트렌드")
+    else:
+        queries = ["한국 오늘 화제 트렌드", "오늘 인기 뉴스 이슈"]
 
     async def _search(query: str) -> list[dict]:
         try:

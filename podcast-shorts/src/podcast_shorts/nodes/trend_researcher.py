@@ -41,6 +41,11 @@ ANALYSIS_SYSTEM_PROMPT = """\
 ANALYSIS_USER_PROMPT = """\
 아래는 오늘의 한국 트렌드 원시 데이터입니다. 각 키워드를 분석하고 팟캐스트 쇼츠에 가장 적합한 주제를 추천해 주세요.
 
+## 사용자 관심 카테고리
+{user_categories}
+
+**중요: 사용자가 관심 카테고리를 지정한 경우, 해당 카테고리에 속하는 키워드를 우선적으로 분석하고 추천하세요.**
+
 ## Tavily 뉴스 검색 결과
 {tavily_data}
 
@@ -124,9 +129,17 @@ async def trend_researcher(state: PipelineState) -> dict:
         }
 
     try:
+        # ── Step 0b: Resolve user preferred categories ────────────────
+        user_prefs = state.get("user_preferences", {})
+        preferred_categories = (
+            user_prefs.get("interest_categories")
+            or user_prefs.get("categories")
+            or []
+        )
+
         # ── Step 1: Parallel source collection ──────────────────────────
         tavily_results, google_results = await asyncio.gather(
-            search_tavily_trends(),
+            search_tavily_trends(categories=preferred_categories),
             fetch_google_trends_kr(),
         )
 
@@ -162,6 +175,7 @@ async def trend_researcher(state: PipelineState) -> dict:
                 {
                     "role": "user",
                     "content": ANALYSIS_USER_PROMPT.format(
+                        user_categories=", ".join(preferred_categories) if preferred_categories else "(지정 없음 — 전체 카테고리)",
                         tavily_data=tavily_text,
                         google_trends_data=google_text,
                     ),
@@ -176,8 +190,6 @@ async def trend_researcher(state: PipelineState) -> dict:
         )
 
         # ── Step 4: Filter by user interest categories ──────────────────
-        user_prefs = state.get("user_preferences", {})
-        preferred_categories = user_prefs.get("categories", [])
 
         if preferred_categories:
             filtered = [
