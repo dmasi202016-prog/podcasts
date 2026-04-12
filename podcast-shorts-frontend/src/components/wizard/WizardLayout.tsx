@@ -23,11 +23,13 @@ const LOADING_LABELS: Record<string, string> = {
 export function WizardLayout() {
   const {
     state,
+    resumePipeline,
     retryFromTimeout,
     extendTimeout,
     clearTimeoutError,
     clearError,
     retryFromError,
+    restartFresh,
   } = usePipeline();
   const { step, isLoading, error, timeoutError, currentNode } = state;
 
@@ -49,7 +51,8 @@ export function WizardLayout() {
         {error && (
           <ErrorModal
             error={error}
-            onRetry={retryFromError}
+            onResume={state.runId ? resumePipeline : undefined}
+            onRetry={restartFresh}
             onClose={clearError}
           />
         )}
@@ -57,7 +60,8 @@ export function WizardLayout() {
         {timeoutError && (
           <TimeoutErrorModal
             message={timeoutError}
-            onRetry={retryFromTimeout}
+            onResume={resumePipeline}
+            onRetry={restartFresh}
             onExtend={extendTimeout}
             onClose={clearTimeoutError}
           />

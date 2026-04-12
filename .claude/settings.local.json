@@ -50,7 +50,10 @@
       "Bash(claude mcp add --scope user context7 -- npx -y @upstash/context7-mcp 2>&1)",
       "Bash(claude mcp list 2>&1)",
       "Bash(git push origin main --dry-run 2>&1)",
-      "Bash(.venv/bin/python3:*)"
+      "Bash(.venv/bin/python3:*)",
+      "Bash(npx next:*)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(node ./node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

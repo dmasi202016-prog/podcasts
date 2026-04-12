@@ -1,15 +1,16 @@
 "use client";
 
-import { AlertCircle, RotateCcw, X } from "lucide-react";
+import { AlertCircle, PlayCircle, RotateCcw, X } from "lucide-react";
 import { Button } from "./Button";
 
 interface ErrorModalProps {
   error: string;
   onRetry: () => void;
+  onResume?: () => void;
   onClose: () => void;
 }
 
-export function ErrorModal({ error, onRetry, onClose }: ErrorModalProps) {
+export function ErrorModal({ error, onRetry, onResume, onClose }: ErrorModalProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -37,20 +38,28 @@ export function ErrorModal({ error, onRetry, onClose }: ErrorModalProps) {
             </p>
           </div>
 
-          <div className="flex w-full gap-2 pt-1">
-            <Button size="lg" className="flex-1" onClick={onRetry}>
-              <RotateCcw size={16} className="mr-2" />
-              처음부터 재시도
-            </Button>
-            <Button
-              variant="ghost"
-              size="lg"
-              className="flex-1"
-              onClick={onClose}
-            >
-              <X size={16} className="mr-2" />
-              닫기
-            </Button>
+          <div className="flex w-full flex-col gap-2 pt-1">
+            {onResume && (
+              <Button size="lg" className="w-full" onClick={onResume}>
+                <PlayCircle size={16} className="mr-2" />
+                이어서 확인
+              </Button>
+            )}
+            <div className="flex w-full gap-2">
+              <Button variant="secondary" size="lg" className="flex-1" onClick={onRetry}>
+                <RotateCcw size={16} className="mr-2" />
+                처음부터 재시도
+              </Button>
+              <Button
+                variant="ghost"
+                size="lg"
+                className="flex-1"
+                onClick={onClose}
+              >
+                <X size={16} className="mr-2" />
+                닫기
+              </Button>
+            </div>
           </div>
         </div>
       </div>

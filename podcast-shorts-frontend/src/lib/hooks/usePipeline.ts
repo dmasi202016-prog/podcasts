@@ -93,13 +93,27 @@ export function usePipeline() {
     dispatch({ type: "RESET" });
   }, [dispatch]);
 
-  const retryFromTimeout = useCallback(() => {
-    dispatch({ type: "CLEAR_TIMEOUT_ERROR" });
-    dispatch({ type: "RESET" });
-    if (state.selectedCategories.length > 0) {
-      startPipeline(state.selectedCategories);
+  const resumePipeline = useCallback(() => {
+    // Resume polling for the existing pipeline run instead of restarting
+    if (state.runId) {
+      dispatch({ type: "CLEAR_TIMEOUT_ERROR" });
+      dispatch({ type: "CLEAR_ERROR" });
+      startPolling(state.runId);
     }
-  }, [dispatch, state.selectedCategories, startPipeline]);
+  }, [state.runId, dispatch, startPolling]);
+
+  const retryFromTimeout = useCallback(() => {
+    // Try to resume the existing pipeline first
+    if (state.runId) {
+      resumePipeline();
+    } else {
+      dispatch({ type: "CLEAR_TIMEOUT_ERROR" });
+      dispatch({ type: "RESET" });
+      if (state.selectedCategories.length > 0) {
+        startPipeline(state.selectedCategories);
+      }
+    }
+  }, [dispatch, state.runId, state.selectedCategories, startPipeline, resumePipeline]);
 
   const extendTimeout = useCallback(() => {
     extendPolling();
@@ -114,7 +128,18 @@ export function usePipeline() {
   }, [dispatch]);
 
   const retryFromError = useCallback(() => {
+    // If we have an active run, try resuming instead of full reset
+    if (state.runId) {
+      resumePipeline();
+    } else {
+      dispatch({ type: "CLEAR_ERROR" });
+      dispatch({ type: "RESET" });
+    }
+  }, [dispatch, state.runId, resumePipeline]);
+
+  const restartFresh = useCallback(() => {
     dispatch({ type: "CLEAR_ERROR" });
+    dispatch({ type: "CLEAR_TIMEOUT_ERROR" });
     dispatch({ type: "RESET" });
   }, [dispatch]);
 
@@ -128,10 +153,12 @@ export function usePipeline() {
     submitHookPrompt,
     goBack,
     reset,
+    resumePipeline,
     retryFromTimeout,
     extendTimeout,
     clearTimeoutError,
     clearError,
     retryFromError,
+    restartFresh,
   };
 }

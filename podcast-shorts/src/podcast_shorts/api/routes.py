@@ -56,6 +56,9 @@ async def _set_error_state(run_id: str, error_msg: str) -> None:
 
 # In-memory fallback: track pipeline errors when checkpointer is unavailable
 _pipeline_errors: dict[str, str] = {}
+# Track consecutive aget_state failures per run_id
+_status_error_counts: dict[str, int] = {}
+_MAX_STATUS_ERRORS = 5
 
 
 async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_preferences: dict, resolution: str = "720x1280", image_generator: str = "dalle", hook_mode: str = "video"):
@@ -152,14 +155,21 @@ async def get_pipeline_status(run_id: str):
 
     try:
         state = await graph.aget_state(config)
+        # Reset error count on success
+        _status_error_counts.pop(run_id, None)
     except Exception as exc:
         print(f"[STATUS] aget_state FAILED run_id={run_id} error={exc}", file=sys.stderr, flush=True)
         logger.warning("pipeline.status.db_error", run_id=run_id, error=str(exc))
-        # Return running on first few failures; frontend's consecutive error counter handles retries
+        _status_error_counts[run_id] = _status_error_counts.get(run_id, 0) + 1
+        if _status_error_counts[run_id] >= _MAX_STATUS_ERRORS:
+            return PipelineStatusResponse(
+                run_id=run_id,
+                status="failed",
+                error=f"서버 상태 확인 실패 ({_status_error_counts[run_id]}회 연속). 연결 문제가 발생했습니다.",
+            )
         return PipelineStatusResponse(run_id=run_id, status="running")
 
     if state.values is None or not state.values:
-        # State exists but is empty — pipeline background task hasn't started writing yet
         print(f"[STATUS] empty state run_id={run_id} values={state.values} next={getattr(state, 'next', None)}", file=sys.stderr, flush=True)
         return PipelineStatusResponse(run_id=run_id, status="running")
 
@@ -211,7 +221,23 @@ async def get_pipeline_status(run_id: str):
             script_file_path=script_file_path,
         )
 
-    return PipelineStatusResponse(run_id=run_id, status="running")
+    # No next nodes and no editor_output → pipeline finished abnormally or
+    # the graph reached END without producing output.
+    # Infer the furthest completed stage from state values.
+    current_node = None
+    if state.values.get("media_assets") is not None:
+        current_node = "auto_editor"
+    elif state.values.get("script_data") is not None:
+        current_node = "media_producer"
+    elif state.values.get("trend_data") is not None:
+        current_node = "scriptwriter"
+    else:
+        current_node = "trend_researcher"
+
+    return PipelineStatusResponse(
+        run_id=run_id, status="running", current_node=current_node,
+        script_file_path=script_file_path,
+    )
 
 
 @router.get("/{run_id}/topics", response_model=TopicSelectionResponse)

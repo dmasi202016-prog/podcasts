@@ -1,11 +1,12 @@
 "use client";
 
-import { AlertCircle, Clock, RotateCcw, X } from "lucide-react";
+import { Clock, PlayCircle, RotateCcw, X } from "lucide-react";
 import { Button } from "./Button";
 
 interface TimeoutErrorModalProps {
   message: string;
   onRetry: () => void;
+  onResume: () => void;
   onExtend: () => void;
   onClose: () => void;
 }
@@ -13,6 +14,7 @@ interface TimeoutErrorModalProps {
 export function TimeoutErrorModal({
   message,
   onRetry,
+  onResume,
   onExtend,
   onClose,
 }: TimeoutErrorModalProps) {
@@ -36,13 +38,17 @@ export function TimeoutErrorModal({
           </h2>
           <p className="text-center text-sm text-zinc-400">{message}</p>
           <div className="flex w-full flex-col gap-2 pt-2">
-            <Button size="lg" className="w-full" onClick={onExtend}>
+            <Button size="lg" className="w-full" onClick={onResume}>
+              <PlayCircle size={16} className="mr-2" />
+              이어서 확인
+            </Button>
+            <Button size="lg" variant="secondary" className="w-full" onClick={onExtend}>
               <Clock size={16} className="mr-2" />
               추가 10분 대기
             </Button>
             <div className="flex w-full gap-2">
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="lg"
                 className="flex-1"
                 onClick={onRetry}
