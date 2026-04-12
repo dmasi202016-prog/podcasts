@@ -113,17 +113,23 @@ async def lifespan(app: FastAPI):
 
     if is_postgres_backend():
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-        from psycopg import AsyncConnection
+        from psycopg_pool import AsyncConnectionPool
 
         # Supabase uses PgBouncer (transaction mode) which doesn't support
         # prepared statements. prepare_threshold=None fully disables them.
-        conn = await AsyncConnection.connect(
-            settings.database_url,
-            autocommit=True,
-            prepare_threshold=None,
+        # Using a connection pool to automatically handle stale/closed connections.
+        pool = AsyncConnectionPool(
+            conninfo=settings.database_url,
+            min_size=2,
+            max_size=5,
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": None,
+            },
         )
+        await pool.open()
         try:
-            saver = AsyncPostgresSaver(conn)
+            saver = AsyncPostgresSaver(pool)
             try:
                 await saver.setup()
             except Exception as setup_err:
@@ -134,10 +140,10 @@ async def lifespan(app: FastAPI):
                     error=str(setup_err),
                 )
             set_checkpointer(saver)
-            logger.info("app.checkpointer", backend="postgres")
+            logger.info("app.checkpointer", backend="postgres", pool_min=2, pool_max=5)
             yield
         finally:
-            await conn.close()
+            await pool.close()
     else:
         from langgraph.checkpoint.memory import InMemorySaver
 
