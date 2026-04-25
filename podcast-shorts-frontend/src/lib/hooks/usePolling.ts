@@ -136,6 +136,11 @@ export function usePolling() {
     if (skipStatus) {
       skipStatusRef.current = skipStatus;
     }
+    // Reset error counter so Resume / restart actually gets a fresh chance.
+    // Without this, a previously-stopped polling session leaves the counter
+    // at MAX, and the first failed poll on resume immediately re-triggers
+    // SET_ERROR — making "이어서 기다리기" appear permanently broken.
+    consecutiveErrorsRef.current = 0;
     if (isPollingRef.current) return;
     isPollingRef.current = true;
     dispatch({ type: "SET_LOADING", isLoading: true });
@@ -148,6 +153,8 @@ export function usePolling() {
   const extendPolling = useCallback(() => {
     dispatch({ type: "CLEAR_TIMEOUT_ERROR" });
     dispatch({ type: "SET_LOADING", isLoading: true });
+    // Same reasoning as startPolling — give Extend a fresh error budget.
+    consecutiveErrorsRef.current = 0;
 
     if (!isPollingRef.current) {
       // Restart polling if it was stopped by timeout

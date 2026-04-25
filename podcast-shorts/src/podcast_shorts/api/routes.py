@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import structlog
@@ -59,6 +60,25 @@ _pipeline_errors: dict[str, str] = {}
 # Track consecutive aget_state failures per run_id
 _status_error_counts: dict[str, int] = {}
 _MAX_STATUS_ERRORS = 5
+
+# Hard ceiling on aget_state — without this the FastAPI request can hang
+# indefinitely if the Postgres pool is exhausted or PgBouncer stalls,
+# which causes the frontend's polling fetch to time out and look like
+# the whole pipeline broke.
+_AGET_STATE_TIMEOUT_S = 8.0
+
+
+async def _aget_state_safe(run_id: str):
+    """Call graph.aget_state with a hard timeout. Returns None on timeout/error."""
+    graph = get_compiled_graph()
+    config = {"configurable": {"thread_id": run_id}}
+    try:
+        return await asyncio.wait_for(
+            graph.aget_state(config), timeout=_AGET_STATE_TIMEOUT_S
+        )
+    except asyncio.TimeoutError as exc:
+        logger.warning("pipeline.aget_state.timeout", run_id=run_id)
+        raise TimeoutError(f"aget_state exceeded {_AGET_STATE_TIMEOUT_S}s") from exc
 
 
 async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_preferences: dict, resolution: str = "720x1280", image_generator: str = "dalle", hook_mode: str = "image"):
@@ -150,11 +170,8 @@ async def get_pipeline_status(run_id: str):
             run_id=run_id, status="failed", error=_pipeline_errors[run_id]
         )
 
-    graph = get_compiled_graph()
-    config = {"configurable": {"thread_id": run_id}}
-
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
         # Reset error count on success
         _status_error_counts.pop(run_id, None)
     except Exception as exc:
@@ -247,7 +264,7 @@ async def get_topics(run_id: str):
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -271,7 +288,7 @@ async def submit_topic_selection(
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -300,7 +317,7 @@ async def get_speakers(run_id: str):
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -331,7 +348,7 @@ async def submit_speaker_selection(
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -365,7 +382,7 @@ async def get_script_for_review(run_id: str):
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -391,7 +408,7 @@ async def submit_review(run_id: str, request: ReviewSubmitRequest, background_ta
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -420,7 +437,7 @@ async def upload_audio_files(run_id: str, request: Request):
     graph = get_compiled_graph()
     config = {"configurable": {"thread_id": run_id}}
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
     if not state.next or "audio_choice_gate" not in state.next:
@@ -452,7 +469,7 @@ async def upload_full_audio(run_id: str, request: Request):
     graph = get_compiled_graph()
     config = {"configurable": {"thread_id": run_id}}
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
     if not state.next or "audio_choice_gate" not in state.next:
@@ -536,7 +553,7 @@ async def get_audio_choice_status(run_id: str):
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -553,7 +570,7 @@ async def submit_audio_choice(run_id: str, request: AudioChoiceRequest, backgrou
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -584,7 +601,7 @@ async def get_hook_prompt(run_id: str):
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -606,7 +623,7 @@ async def submit_hook_prompt(
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Pipeline run {run_id} not found")
 
@@ -639,7 +656,7 @@ async def get_pipeline_result(run_id: str):
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
     except Exception:
         state = None
 
@@ -714,7 +731,7 @@ async def debug_pipeline_state(run_id: str):
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        state = await graph.aget_state(config)
+        state = await _aget_state_safe(run_id)
         result["checkpointer"] = "ok"
         result["has_values"] = state.values is not None and bool(state.values)
         result["next"] = list(state.next) if state.next else []
