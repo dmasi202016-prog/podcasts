@@ -36,8 +36,8 @@ const IMAGE_GENERATORS = [
 ];
 
 const HOOK_MODES = [
+  { value: "image", label: "AI 그림 (정적 이미지)", desc: "DALL-E / Ideogram · 빠른 생성 (기본값)" },
   { value: "video", label: "AI 영상 (Luma)", desc: "Luma Dream Machine · 5~9초 동영상" },
-  { value: "image", label: "정적 이미지", desc: "DALL-E / Ideogram · 빠른 생성" },
 ];
 
 type InputMode = "category" | "topic";
@@ -55,7 +55,7 @@ export function Step1Category() {
   // 공통 설정
   const [resolution, setResolution] = useState("720x1280");
   const [imageGenerator, setImageGenerator] = useState("dalle");
-  const [hookMode, setHookMode] = useState("video");
+  const [hookMode, setHookMode] = useState("image");
   const [starting, setStarting] = useState(false);
 
   const toggle = (id: string) => {

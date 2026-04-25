@@ -9,8 +9,6 @@ import { Step1Category } from "./Step1Category";
 import { Step2TrendResults } from "./Step2TrendResults";
 import { Step3Speakers } from "./Step3Speakers";
 import { Step4ScriptReview } from "./Step4ScriptReview";
-import { Step5AudioChoice } from "./Step5AudioChoice";
-import { StepHookPrompt } from "./StepHookPrompt";
 import { Step6VideoResult } from "./Step6VideoResult";
 
 const LOADING_LABELS: Record<string, string> = {
@@ -82,9 +80,7 @@ export function WizardLayout() {
             {step === 2 && <Step2TrendResults />}
             {step === 3 && <Step3Speakers />}
             {step === 4 && <Step4ScriptReview />}
-            {step === 5 && <Step5AudioChoice />}
-            {step === 6 && <StepHookPrompt />}
-            {step === 7 && <Step6VideoResult />}
+            {step === 5 && <Step6VideoResult />}
           </div>
         )}
       </div>

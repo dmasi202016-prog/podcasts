@@ -9,7 +9,7 @@ export function usePipeline() {
   const { state, dispatch } = usePipelineContext();
   const { startPolling, extendPolling } = usePolling();
 
-  const startPipeline = useCallback(async (categories: string[], resolution: string = "720x1280", imageGenerator: string = "dalle", hookMode: string = "video", keywords: string[] = []) => {
+  const startPipeline = useCallback(async (categories: string[], resolution: string = "720x1280", imageGenerator: string = "dalle", hookMode: string = "image", keywords: string[] = []) => {
     try {
       dispatch({ type: "SET_CATEGORIES", categories });
       const res = await api.startPipeline("default_user", categories, resolution, imageGenerator, hookMode, keywords);
@@ -56,36 +56,13 @@ export function usePipeline() {
     }
   }, [state.runId, dispatch, startPolling]);
 
-  const selectAudio = useCallback(async (audioSource: "tts" | "manual", audioFiles?: Record<string, string>) => {
-    if (!state.runId) return;
-    try {
-      dispatch({ type: "SET_AUDIO_SOURCE", audioSource });
-      dispatch({ type: "SET_LOADING", isLoading: true });
-      await api.submitAudioChoice(state.runId, audioSource, audioFiles);
-      startPolling(undefined, "waiting_for_audio_choice");
-    } catch (err) {
-      dispatch({ type: "SET_ERROR", error: (err as Error).message });
-    }
-  }, [state.runId, dispatch, startPolling]);
-
-  const submitHookPrompt = useCallback(async (prompt: string) => {
-    if (!state.runId) return;
-    try {
-      dispatch({ type: "SET_LOADING", isLoading: true });
-      await api.submitHookPrompt(state.runId, prompt);
-      startPolling(undefined, "waiting_for_hook_prompt");
-    } catch (err) {
-      dispatch({ type: "SET_ERROR", error: (err as Error).message });
-    }
-  }, [state.runId, dispatch, startPolling]);
-
   const goBack = useCallback(() => {
     const { step } = state;
     if (step <= 1) return;
     if (step === 2) {
       dispatch({ type: "RESET" });
     } else {
-      dispatch({ type: "SET_STEP", step: (step - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 });
+      dispatch({ type: "SET_STEP", step: (step - 1) as 1 | 2 | 3 | 4 | 5 });
     }
   }, [state, dispatch]);
 
@@ -149,8 +126,6 @@ export function usePipeline() {
     selectTopic,
     selectSpeakers,
     submitReview,
-    selectAudio,
-    submitHookPrompt,
     goBack,
     reset,
     resumePipeline,

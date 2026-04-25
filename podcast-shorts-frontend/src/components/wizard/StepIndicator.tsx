@@ -9,7 +9,7 @@ interface StepIndicatorProps {
 }
 
 export function StepIndicator({ currentStep }: StepIndicatorProps) {
-  const steps = [1, 2, 3, 4, 5, 6, 7] as WizardStep[];
+  const steps = [1, 2, 3, 4, 5] as WizardStep[];
 
   return (
     <div className="flex items-center justify-center gap-1 sm:gap-2 mb-8">

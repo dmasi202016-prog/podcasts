@@ -34,12 +34,6 @@ interface PipelineState {
   scriptData: ScriptData | null;
 
   // Step 5
-  audioSource: "tts" | "manual" | null;
-
-  // Step 6 (hook prompt)
-  hookPrompt: string | null;
-
-  // Step 7
   result: EditorOutput | null;
 }
 
@@ -58,8 +52,6 @@ type PipelineAction =
   | { type: "SET_HOST"; host: string }
   | { type: "SET_PARTICIPANTS"; participants: string[] }
   | { type: "SET_SCRIPT"; scriptData: ScriptData }
-  | { type: "SET_AUDIO_SOURCE"; audioSource: "tts" | "manual" }
-  | { type: "SET_HOOK_PROMPT"; prompt: string }
   | { type: "SET_RESULT"; result: EditorOutput }
   | { type: "RESET" };
 
@@ -77,8 +69,6 @@ const initialState: PipelineState = {
   host: null,
   participants: [],
   scriptData: null,
-  audioSource: null,
-  hookPrompt: null,
   result: null,
 };
 
@@ -112,12 +102,8 @@ function pipelineReducer(state: PipelineState, action: PipelineAction): Pipeline
       return { ...state, participants: action.participants };
     case "SET_SCRIPT":
       return { ...state, scriptData: action.scriptData, step: 4, isLoading: false };
-    case "SET_AUDIO_SOURCE":
-      return { ...state, audioSource: action.audioSource };
-    case "SET_HOOK_PROMPT":
-      return { ...state, hookPrompt: action.prompt, step: 6, isLoading: false };
     case "SET_RESULT":
-      return { ...state, result: action.result, step: 7, isLoading: false };
+      return { ...state, result: action.result, step: 5, isLoading: false };
     case "RESET":
       return initialState;
     default:

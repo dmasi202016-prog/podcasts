@@ -61,7 +61,7 @@ _status_error_counts: dict[str, int] = {}
 _MAX_STATUS_ERRORS = 5
 
 
-async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_preferences: dict, resolution: str = "720x1280", image_generator: str = "dalle", hook_mode: str = "video"):
+async def _run_pipeline(run_id: str, user_id: str, keywords: list[str], user_preferences: dict, resolution: str = "720x1280", image_generator: str = "dalle", hook_mode: str = "image"):
     """Execute the pipeline graph in the background."""
     import sys
 

@@ -39,7 +39,5 @@ export const STEP_LABELS: Record<number, string> = {
   2: "트렌드",
   3: "출연자",
   4: "대본",
-  5: "오디오",
-  6: "Hook",
-  7: "영상",
+  5: "영상",
 };

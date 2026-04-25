@@ -51,8 +51,6 @@ export type PipelineStatus =
   | "waiting_for_topic_selection"
   | "waiting_for_speaker_selection"
   | "waiting_for_review"
-  | "waiting_for_audio_choice"
-  | "waiting_for_hook_prompt"
   | "completed"
   | "failed";
 
@@ -95,10 +93,4 @@ export interface PipelineResultResponse {
   error?: string;
 }
 
-export interface HookPromptResponse {
-  run_id: string;
-  status: string;
-  prompt?: string;
-}
-
-export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type WizardStep = 1 | 2 | 3 | 4 | 5;

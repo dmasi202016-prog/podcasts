@@ -5,7 +5,6 @@ import type {
   TopicSelectionResponse,
   SpeakerSelectionResponse,
   ScriptReviewResponse,
-  HookPromptResponse,
   PipelineResultResponse,
 } from "./types";
 
@@ -26,7 +25,7 @@ export async function startPipeline(
   categories: string[],
   resolution: string = "720x1280",
   imageGenerator: string = "dalle",
-  hookMode: string = "video",
+  hookMode: string = "image",
   keywords: string[] = [],
 ): Promise<PipelineStartResponse> {
   return fetchJSON<PipelineStartResponse>(`${API_BASE}/start`, {
@@ -87,72 +86,6 @@ export async function submitReview(
   return fetchJSON(`${API_BASE}/${runId}/review`, {
     method: "POST",
     body: JSON.stringify({ approved, feedback }),
-  });
-}
-
-export interface UploadAudioResponse {
-  run_id: string;
-  audio_files: Record<string, string>;
-}
-
-export async function uploadAudioFiles(
-  runId: string,
-  files: Record<string, File>,
-): Promise<UploadAudioResponse> {
-  const formData = new FormData();
-  for (const [sceneId, file] of Object.entries(files)) {
-    formData.append(sceneId, file);
-  }
-  const res = await fetch(`${API_BASE}/${runId}/upload-audio`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
-  }
-  return res.json() as Promise<UploadAudioResponse>;
-}
-
-export async function uploadSingleAudioFile(
-  runId: string,
-  file: File,
-): Promise<UploadAudioResponse> {
-  const formData = new FormData();
-  formData.append("audio", file);
-  const res = await fetch(`${API_BASE}/${runId}/upload-full-audio`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
-  }
-  return res.json() as Promise<UploadAudioResponse>;
-}
-
-export async function submitAudioChoice(
-  runId: string,
-  audioSource: "tts" | "manual",
-  audioFiles?: Record<string, string>,
-): Promise<{ run_id: string; status: string }> {
-  return fetchJSON(`${API_BASE}/${runId}/audio-choice`, {
-    method: "POST",
-    body: JSON.stringify({ audio_source: audioSource, audio_files: audioFiles }),
-  });
-}
-
-export async function getHookPrompt(runId: string): Promise<HookPromptResponse> {
-  return fetchJSON<HookPromptResponse>(`${API_BASE}/${runId}/hook-prompt`);
-}
-
-export async function submitHookPrompt(
-  runId: string,
-  prompt: string,
-): Promise<{ run_id: string; status: string }> {
-  return fetchJSON(`${API_BASE}/${runId}/hook-prompt`, {
-    method: "POST",
-    body: JSON.stringify({ prompt }),
   });
 }
 

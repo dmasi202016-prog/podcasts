@@ -10,7 +10,6 @@ const NODE_LABELS: Record<string, string> = {
   trend_researcher: "트렌드 분석",
   scriptwriter: "대본 생성",
   media_producer: "오디오/이미지 생성",
-  hook_prompt_gate: "Hook 영상 프롬프트",
   auto_editor: "영상 편집",
 };
 
@@ -105,19 +104,6 @@ export function usePolling() {
         const scriptRes = await api.getScript(runId);
         if (scriptRes.script_data) {
           dispatch({ type: "SET_SCRIPT", scriptData: scriptRes.script_data });
-        }
-      } else if (statusRes.status === "waiting_for_audio_choice") {
-        stopPolling();
-        dispatch({ type: "SET_STEP", step: 5 });
-        dispatch({ type: "SET_LOADING", isLoading: false });
-      } else if (statusRes.status === "waiting_for_hook_prompt") {
-        stopPolling();
-        try {
-          const hookRes = await api.getHookPrompt(runId);
-          dispatch({ type: "SET_HOOK_PROMPT", prompt: hookRes.prompt ?? "" });
-        } catch (hookErr) {
-          console.error("getHookPrompt failed:", hookErr);
-          dispatch({ type: "SET_ERROR", error: (hookErr as Error).message });
         }
       } else if (statusRes.status === "completed") {
         stopPolling();
