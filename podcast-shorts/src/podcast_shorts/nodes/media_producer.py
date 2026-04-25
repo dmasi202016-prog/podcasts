@@ -562,9 +562,11 @@ async def media_producer(state: PipelineState) -> dict:
             )
 
         # ── Concatenate audio ────────────────────────────────────────
+        # Run in thread: MoviePy write_audiofile is synchronous and blocks
+        # the FastAPI event loop (which serves /status polling).
         audio_paths = [seg["audio_path"] for seg in audio_segments]
         full_audio_path = str(output_dir / "audio" / "full_audio.mp3")
-        _concatenate_audio(audio_paths, full_audio_path)
+        await asyncio.to_thread(_concatenate_audio, audio_paths, full_audio_path)
 
         # ── Build MediaAssets ────────────────────────────────────────
         media_assets: MediaAssets = {

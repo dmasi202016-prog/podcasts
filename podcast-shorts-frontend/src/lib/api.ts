@@ -8,16 +8,36 @@ import type {
   PipelineResultResponse,
 } from "./types";
 
-async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
+// Per-request timeout — without this, a hung backend request can sit in flight
+// indefinitely and pile up across polling intervals.
+const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+
+async function fetchJSON<T>(
+  url: string,
+  options?: RequestInit & { timeoutMs?: number },
+): Promise<T> {
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, ...rest } = options ?? {};
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      headers: { "Content-Type": "application/json" },
+      ...rest,
+      signal: rest.signal ?? controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`API error ${res.status}: ${body}`);
+    }
+    return (await res.json()) as T;
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error(`요청 시간 초과 (${timeoutMs}ms): ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json() as Promise<T>;
 }
 
 export async function startPipeline(

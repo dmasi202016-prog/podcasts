@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 from pathlib import Path
@@ -222,8 +223,11 @@ async def auto_editor(state: PipelineState) -> dict:
         thumbnail_path = str(output_dir / f"{run_id}_thumbnail.png")
 
         # ── Step 1: Generate SRT captions from script text + audio timing ──
+        # Run in thread to keep the event loop responsive (file I/O + pysrt).
         scenes = (state.get("script_data") or {}).get("scenes", [])
-        scene_captions = _generate_captions_from_script(scenes, audio_segments, srt_path)
+        scene_captions = await asyncio.to_thread(
+            _generate_captions_from_script, scenes, audio_segments, srt_path
+        )
 
         # ── Step 3: Generate channel intro TTS ─────────────────────
         intro_audio_path = str(output_dir / "channel_intro.mp3")
@@ -310,8 +314,10 @@ async def auto_editor(state: PipelineState) -> dict:
             # Body scenes get the dark trend-summary banner at top (4:5 image area)
             is_body = scene_id.startswith("body_")
 
-            # Pass srt_cursor so captions align with Whisper SRT timestamps
-            clip = compose_scene_clip(
+            # Pass srt_cursor so captions align with Whisper SRT timestamps.
+            # to_thread keeps the event loop free for /status polling.
+            clip = await asyncio.to_thread(
+                compose_scene_clip,
                 audio_path=audio_path,
                 image_path=img_path,
                 captions=scene_captions[i] if i < len(scene_captions) else [],
@@ -328,11 +334,19 @@ async def auto_editor(state: PipelineState) -> dict:
             # (intro is NOT in full_audio/SRT, so only video_cursor advances)
             if scene_id == "hook" and os.path.isfile(intro_audio_path):
                 from moviepy import AudioFileClip as _AFC
-                _intro_audio = _AFC(intro_audio_path)
-                intro_duration = _intro_audio.duration
-                _intro_audio.close()
 
-                intro_clip = compose_scene_clip(
+                def _measure_intro_duration(path: str) -> float:
+                    _a = _AFC(path)
+                    d = _a.duration
+                    _a.close()
+                    return d
+
+                intro_duration = await asyncio.to_thread(
+                    _measure_intro_duration, intro_audio_path
+                )
+
+                intro_clip = await asyncio.to_thread(
+                    compose_scene_clip,
                     audio_path=intro_audio_path,
                     image_path=_CHANNEL_AD_IMAGE,
                     captions=[],
@@ -348,8 +362,11 @@ async def auto_editor(state: PipelineState) -> dict:
             raise RuntimeError("No scene clips could be assembled")
 
         # ── Step 4: Final render ─────────────────────────────────────
+        # Heavy: write_videofile + ffmpeg subprocess (timeout=300s). Must run
+        # off the event loop or /status polling will hang for the entire render.
         bgm_path = state.get("user_preferences", {}).get("bgm_path")
-        render_final_video(
+        await asyncio.to_thread(
+            render_final_video,
             scene_clips=clips,
             output_path=final_video_path,
             bgm_path=bgm_path,
@@ -358,7 +375,7 @@ async def auto_editor(state: PipelineState) -> dict:
 
         # ── Step 5: Thumbnail (copy first scene image) ───────────────
         if images:
-            shutil.copy2(images[0]["image_path"], thumbnail_path)
+            await asyncio.to_thread(shutil.copy2, images[0]["image_path"], thumbnail_path)
 
         # ── Step 6: Metadata ─────────────────────────────────────────
         metadata = _generate_metadata(script_data, trend_data)
@@ -366,9 +383,13 @@ async def auto_editor(state: PipelineState) -> dict:
         # Measure actual duration from rendered file
         from moviepy import VideoFileClip as _VFC
 
-        rendered = _VFC(final_video_path)
-        duration_sec = rendered.duration
-        rendered.close()
+        def _measure_video_duration(path: str) -> float:
+            r = _VFC(path)
+            d = r.duration
+            r.close()
+            return d
+
+        duration_sec = await asyncio.to_thread(_measure_video_duration, final_video_path)
 
         # ── Step 7: Quality assessment ───────────────────────────────
         quality = _assess_quality(final_video_path, srt_path, thumbnail_path, duration_sec)
