@@ -11,6 +11,9 @@ import type {
 // Per-request timeout — without this, a hung backend request can sit in flight
 // indefinitely and pile up across polling intervals.
 const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+// Status polling needs a longer ceiling: Railway cold-starts (and Supabase pool
+// warm-up after restart) can legitimately take 30-40s on the first request.
+const STATUS_REQUEST_TIMEOUT_MS = 45_000;
 
 async function fetchJSON<T>(
   url: string,
@@ -62,7 +65,9 @@ export async function startPipeline(
 }
 
 export async function getStatus(runId: string): Promise<PipelineStatusResponse> {
-  return fetchJSON<PipelineStatusResponse>(`${API_BASE}/${runId}/status`);
+  return fetchJSON<PipelineStatusResponse>(`${API_BASE}/${runId}/status`, {
+    timeoutMs: STATUS_REQUEST_TIMEOUT_MS,
+  });
 }
 
 export async function getTopics(runId: string): Promise<TopicSelectionResponse> {

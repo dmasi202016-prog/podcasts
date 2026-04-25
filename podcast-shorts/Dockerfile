@@ -17,4 +17,6 @@ ENV OUTPUT_BASE_DIR=/app/output
 
 EXPOSE 8000
 
-CMD ["uvicorn", "podcast_shorts.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Railway injects $PORT and routes traffic to it. Falling back to 8000 keeps
+# `docker run -p 8000:8000 …` working in local development.
+CMD ["sh", "-c", "exec uvicorn podcast_shorts.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -23,7 +23,10 @@ export function usePolling() {
   const skipStatusRef = useRef<PipelineStatus | null>(null);
   const lastNodeRef = useRef<string | null>(null);
   const consecutiveErrorsRef = useRef(0);
-  const MAX_CONSECUTIVE_ERRORS = 3;
+  // Allow a generous failure window before bailing — Railway cold-starts,
+  // Supabase pool warm-up, and momentary network blips can all chew through
+  // multiple polls in a row. With 2s polling, 8 errors = ~16s of grace.
+  const MAX_CONSECUTIVE_ERRORS = 8;
 
   // Keep ref in sync with context state
   useEffect(() => {

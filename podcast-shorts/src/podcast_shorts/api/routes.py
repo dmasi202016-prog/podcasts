@@ -164,6 +164,10 @@ async def get_pipeline_status(run_id: str):
     """Get the current status of a pipeline run."""
     import sys
 
+    # Entry-point log so we can confirm in Railway logs that the request
+    # actually reached the FastAPI handler (vs. being dropped by the proxy).
+    print(f"[STATUS] hit run_id={run_id}", file=sys.stderr, flush=True)
+
     # Check in-memory error cache first (covers case when checkpointer write also failed)
     if run_id in _pipeline_errors:
         return PipelineStatusResponse(

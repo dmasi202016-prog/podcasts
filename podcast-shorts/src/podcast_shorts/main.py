@@ -117,17 +117,21 @@ async def lifespan(app: FastAPI):
 
         # Supabase uses PgBouncer (transaction mode) which doesn't support
         # prepared statements. prepare_threshold=None fully disables them.
-        # Using a connection pool to automatically handle stale/closed connections.
+        # min_size=0 + open(wait=False) means startup never blocks waiting for
+        # Supabase — connections are established on first request. This keeps
+        # Railway cold-starts under 1s and avoids the case where a slow DB
+        # handshake delays /health and triggers a Railway restart loop.
         pool = AsyncConnectionPool(
             conninfo=settings.database_url,
-            min_size=2,
+            min_size=0,
             max_size=5,
+            open=False,
             kwargs={
                 "autocommit": True,
                 "prepare_threshold": None,
             },
         )
-        await pool.open()
+        await pool.open(wait=False)
         try:
             saver = AsyncPostgresSaver(pool)
             try:
@@ -140,7 +144,7 @@ async def lifespan(app: FastAPI):
                     error=str(setup_err),
                 )
             set_checkpointer(saver)
-            logger.info("app.checkpointer", backend="postgres", pool_min=2, pool_max=5)
+            logger.info("app.checkpointer", backend="postgres", pool_min=0, pool_max=5)
             yield
         finally:
             await pool.close()
@@ -185,4 +189,14 @@ app.mount("/files/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets
 
 @app.get("/health")
 async def health_check():
+    import sys
+
+    print("[HEALTH] hit", file=sys.stderr, flush=True)
     return {"status": "ok"}
+
+
+# Railway's default healthcheck path is "/" — provide it so the platform
+# doesn't keep restarting the container thinking it's unhealthy.
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "podcast-shorts"}
